@@ -37,15 +37,13 @@ export function expressionToLatex(expr: Expression): string {
     if (expr.type === 'FunctionCall') {
         const func = expr as FunctionCall;
         const argLatex = expressionToLatex(func.argument);
-        const needs = func.argument.type === 'BinaryExpression' || func.argument.type === 'UnaryExpression';
-        const wrappedArg = needs ? `(${argLatex})` : argLatex;
         if (func.name === 'sqrt') {
             return `\\sqrt{${argLatex}}`;
         }
         if (func.name === 'sin' || func.name === 'cos') {
-            return `\\${func.name}\\left(${wrappedArg}\\right)`;
+            return `\\${func.name}\\left(${argLatex}\\right)`;
         }
-        return `\\operatorname{${func.name}}\\left(${wrappedArg}\\right)`;
+        return `\\operatorname{${func.name}}\\left(${argLatex}\\right)`;
     }
     
     if (expr.type === 'BinaryExpression') {
