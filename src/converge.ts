@@ -37,6 +37,9 @@ export function simplify(expr: Expression): Expression {
             if (func.name === 'cos') {
                 return { type: 'NumericLiteral', value: Math.cos(val) } as NumericLiteral;
             }
+            if (func.name === 'exp') {
+                return { type: 'NumericLiteral', value: Math.exp(val) } as NumericLiteral;
+            }
         }
         return {
             type: 'FunctionCall',
@@ -264,6 +267,33 @@ export function degree(sequence: Expression):number{
             return 0.5 * degree(func.argument);
         }
         // sin/cos don't affect degree for convergence purposes
+        if(func.name === 'sin' || func.name === 'cos'){
+            return degree(func.argument);
+        }
+        if(func.name === 'exp'){
+            // If argument grows negatively without bound (e.g. -n), exp tends to 0
+            const isNegativeUnbounded = (e: Expression): boolean => {
+                if(e.type === 'UnaryExpression'){
+                    const u = e as UnaryExpression;
+                    if(u.operator === '-'){
+                        return growsWithoutBound(u.argument);
+                    }
+                    if(u.operator === '+'){
+                        return isNegativeUnbounded(u.argument);
+                    }
+                }
+                return false;
+            };
+            if(isNegativeUnbounded(func.argument)){
+                return 0;
+            }
+            // If argument grows positively without bound, exp dominates any polynomial
+            if(growsWithoutBound(func.argument)){
+                return Number.POSITIVE_INFINITY;
+            }
+            // Otherwise argument is bounded -> exp is bounded (degree 0)
+            return 0;
+        }
         return degree(func.argument);
     } else if(sequence.type == 'Identifier'){
         return 1;
@@ -423,6 +453,14 @@ export function derive(sequence: Expression):Expression{
                 } as BinaryExpression,
                 right: argDeriv
             } as BinaryExpression;
+        } else if(func.name === 'exp'){
+            // d/dx exp(u) = exp(u) * u'
+            return {
+                type: 'BinaryExpression',
+                operator: '*',
+                left: { type: 'FunctionCall', name: 'exp', argument: func.argument } as FunctionCall,
+                right: argDeriv
+            } as BinaryExpression;
         }
         return func;
     }
@@ -525,27 +563,6 @@ function isNumericZero(expr: Expression): boolean {
 }
 
 
-function isPolynomial(expr: Expression): boolean {
-    if (expr.type === 'Identifier') return true;
-    if (expr.type === 'NumericLiteral') return true;
-    if (expr.type === 'PowerExpression') {
-        const powExp = expr as PowerExpression;
-        return powExp.base.type === 'Identifier' && powExp.exponent.type === 'NumericLiteral' && (powExp.exponent as NumericLiteral).value >= 0;
-    }
-    if (expr.type === 'UnaryExpression') {
-        return isPolynomial((expr as UnaryExpression).argument);
-    }
-    if (expr.type === 'BinaryExpression') {
-        const binExp = expr as BinaryExpression;
-        if (binExp.operator === '+' || binExp.operator === '-' || binExp.operator === '*') {
-            return isPolynomial(binExp.left) && isPolynomial(binExp.right);
-        }
-        if (binExp.operator === '/') {
-            return isPolynomial(binExp.left) && isPolynomial(binExp.right);
-        }
-    }
-    return false;
-}
 
 export function converge(sequence: Expression, maxIterations: number = 10000):number|boolean{
     sequence = simplify(sequence);
@@ -554,6 +571,12 @@ export function converge(sequence: Expression, maxIterations: number = 10000):nu
     if(sequence.type === 'FunctionCall'){
         const func = sequence as FunctionCall;
         const argLimit = converge(func.argument, maxIterations);
+        if(func.name == "exp" && func.argument.type == 'UnaryExpression'){
+            const u = func.argument as UnaryExpression;
+            if(u.operator == '-' && growsWithoutBound(u.argument)){
+                return 0;
+            }
+        }
         if(typeof argLimit !== 'number'){
             return false;
         }
@@ -584,6 +607,11 @@ export function converge(sequence: Expression, maxIterations: number = 10000):nu
             return false; // negative argument
         }
 
+        if(func.name === 'exp'){
+            // exp is continuous over R: if argument converges to L, exp(L)
+            return Math.exp(argLimit);
+        }
+
         // Unknown function
         return false;
     }
@@ -608,56 +636,55 @@ export function converge(sequence: Expression, maxIterations: number = 10000):nu
                 return false;
             }
 
-        if (isPolynomial(binExp.left) && isPolynomial(binExp.right)) {
-    
-                const leftDeg = degree(binExp.left);
-                const rightDeg = degree(binExp.right);
-                
-                // Handle constant / polynomial
-                if(leftDeg == 0 && rightDeg > 0){
-                    // Constant over polynomial → converges to 0
+       
+            const leftDeg = degree(binExp.left);
+            const rightDeg = degree(binExp.right);
+            
+            // Handle constant / polynomial
+            if(leftDeg == 0 && rightDeg > 0){
+                // Constant over polynomial → converges to 0
+                return 0;
+            }
+            
+            // Handle polynomial / polynomial
+            if(leftDeg > 0 && rightDeg > 0){
+                if(leftDeg < rightDeg){
+                    // Numerator degree < denominator degree → converges to 0
                     return 0;
                 }
-                
-                // Handle polynomial / polynomial
-                if(leftDeg > 0 && rightDeg > 0){
-                    if(leftDeg < rightDeg){
-                        // Numerator degree < denominator degree → converges to 0
-                        return 0;
-                    }
-                    if(leftDeg > rightDeg){
-                        // Numerator degree > denominator degree → diverges
-                        return false;
-                    }
-                    // leftDeg == rightDeg → use L'Hôpital's rule
-                    let leftDerv = binExp.left;
-                    let rightDerv = binExp.right;
-                    let iterations = 0;
-                
-                    while(leftDerv.type != 'NumericLiteral' && iterations < maxIterations){
-                        leftDerv = derive(leftDerv);
-                        leftDerv = simplify(leftDerv);
-                        iterations++;
-                    }
-                    iterations = 0;
-                    while(rightDerv.type != 'NumericLiteral' && iterations < maxIterations){
-                        rightDerv = derive(rightDerv);
-                        rightDerv = simplify(rightDerv);
-                        iterations++;
-                    }
-                    
-                    if (leftDerv.type !== 'NumericLiteral' || rightDerv.type !== 'NumericLiteral') {
-                        return false;
-                    }
-                    
-                    const leftNum = (leftDerv as NumericLiteral).value;
-                    const rightNum = (rightDerv as NumericLiteral).value;
-                    if(rightNum == 0){
-                        throw new Error("Division by zero in convergence");
-                    }
-                    return leftNum / rightNum;
+                if(leftDeg > rightDeg){
+                    // Numerator degree > denominator degree → diverges
+                    return false;
                 }
+                // leftDeg == rightDeg → use L'Hôpital's rule
+                let leftDerv = binExp.left;
+                let rightDerv = binExp.right;
+                let iterations = 0;
+            
+                while(leftDerv.type != 'NumericLiteral' && iterations < maxIterations){
+                    leftDerv = derive(leftDerv);
+                    leftDerv = simplify(leftDerv);
+                    iterations++;
+                }
+                iterations = 0;
+                while(rightDerv.type != 'NumericLiteral' && iterations < maxIterations){
+                    rightDerv = derive(rightDerv);
+                    rightDerv = simplify(rightDerv);
+                    iterations++;
+                }
+                
+                if (leftDerv.type !== 'NumericLiteral' || rightDerv.type !== 'NumericLiteral') {
+                    return false;
+                }
+                
+                const leftNum = (leftDerv as NumericLiteral).value;
+                const rightNum = (rightDerv as NumericLiteral).value;
+                if(rightNum == 0){
+                    throw new Error("Division by zero in convergence");
+                }
+                return leftNum / rightNum;
             }
+            
         }
 
         if(binExp.operator == '*'){

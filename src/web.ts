@@ -43,6 +43,10 @@ export function expressionToLatex(expr: Expression): string {
         if (func.name === 'sin' || func.name === 'cos') {
             return `\\${func.name}\\left(${argLatex}\\right)`;
         }
+        if (func.name === 'exp') {
+            // Render exp(x) as e^{x}
+            return `e^{${argLatex}}`;
+        }
         return `\\operatorname{${func.name}}\\left(${argLatex}\\right)`;
     }
     

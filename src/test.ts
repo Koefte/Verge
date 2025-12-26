@@ -179,6 +179,31 @@ const testCases: TestCase[] = [
         expression: "sin(n)",
         expected: false
     }
+    ,
+    // Exponential
+    {
+        name: "Exp: exp(1/n) -> 1",
+        expression: "exp(1/n)",
+        expected: 1,
+        tolerance: 0.0001
+    },
+    {
+        name: "Exp: n/exp(n) -> 0",
+        expression: "n/exp(n)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Exp: exp(n)/n diverges",
+        expression: "exp(n)/n",
+        expected: false
+    },
+    {
+        name: "Exp: exp(-n) -> 0",
+        expression: "exp(-n)",
+        expected: 0,
+        tolerance: 0.0001
+    }
 ];
 
 function testExpressionParsing(expr: string): Expression {
