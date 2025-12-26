@@ -61,7 +61,7 @@ const testCases: TestCase[] = [
     {
         name: "Negative exponents: (2n^-2)/(2n^-1)",
         expression: "(2*n^-2)/(2*n^-1)",
-        expected: false // diverges (n^-1 → 0)
+        expected: 0 // converges to 0 (simplifies to n^-1 = 1/n)
     },
     {
         name: "Negative exponents: n^-1",

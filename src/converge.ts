@@ -129,6 +129,55 @@ export function simplify(expr: Expression): Expression {
                     }
                 }
             }
+            
+            // Simplify (c*x^a) / (d*x^b) where c,d are numeric and x has same base
+            if (leftBin.left.type === 'NumericLiteral' && rightBin.left.type === 'NumericLiteral' &&
+                leftBin.right.type === 'PowerExpression' && rightBin.right.type === 'PowerExpression') {
+                const leftPow = leftBin.right as PowerExpression;
+                const rightPow = rightBin.right as PowerExpression;
+                
+                if (basesEqual(leftPow.base, rightPow.base) &&
+                    leftPow.exponent.type === 'NumericLiteral' &&
+                    rightPow.exponent.type === 'NumericLiteral') {
+                    const c = (leftBin.left as NumericLiteral).value;
+                    const d = (rightBin.left as NumericLiteral).value;
+                    const a = (leftPow.exponent as NumericLiteral).value;
+                    const b = (rightPow.exponent as NumericLiteral).value;
+                    
+                    if (d !== 0) {
+                        const ratio = c / d;
+                        const newExp = a - b;
+                        
+                        // Build the power part
+                        let powerPart: Expression;
+                        if (newExp === 0) {
+                            powerPart = { type: 'NumericLiteral', value: 1 } as NumericLiteral;
+                        } else if (newExp === 1) {
+                            powerPart = leftPow.base;
+                        } else {
+                            powerPart = {
+                                type: 'PowerExpression',
+                                base: leftPow.base,
+                                exponent: { type: 'NumericLiteral', value: newExp } as NumericLiteral
+                            } as PowerExpression;
+                        }
+                        
+                        // Combine with ratio
+                        if (ratio === 1) {
+                            return powerPart;
+                        } else if (powerPart.type === 'NumericLiteral' && (powerPart as NumericLiteral).value === 1) {
+                            return { type: 'NumericLiteral', value: ratio } as NumericLiteral;
+                        } else {
+                            return {
+                                type: 'BinaryExpression',
+                                operator: '*',
+                                left: { type: 'NumericLiteral', value: ratio } as NumericLiteral,
+                                right: powerPart
+                            } as BinaryExpression;
+                        }
+                    }
+                }
+            }
         }
     }
 

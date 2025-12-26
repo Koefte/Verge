@@ -6,7 +6,7 @@
 -npm run start : runs index
 -npm run serve : serves frontend on localhost
 -npm run dev   : tsc in watch mode
--npm run test  : check test cases
+-npm test  : check test cases
 
 ## About
 
