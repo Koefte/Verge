@@ -14,4 +14,4 @@ This project aims to create a convergence test machine for series, supporting ra
 
 ## Functionality
 
-The program creates an ast from tokenized input and analyzes said ast for the polynomial degree performing L'Hopitals until a result is reached.
+The program creates an ast from tokenized input and analyzes said ast for the polynomial degree performing L'Hopitals until a result is reached, if the function includes trig functions , the sandwich lemma is used to check for convergence
