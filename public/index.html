@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convergence Tester</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Series Convergence Tester</h1>
+        
+        <div class="input-section">
+            <label for="expression">Enter expression:</label>
+            <input type="text" id="expression" placeholder="e.g., 2n+5/3n-7" value="2n+5/3n-7">
+            <button id="checkBtn">Check Convergence</button>
+        </div>
+
+        <div class="output-section">
+            <div class="expression-display">
+                <h3>Parsed Expression:</h3>
+                <div id="parsedExpr" class="math-display"></div>
+            </div>
+
+            <div class="result-display">
+                <h3>Result:</h3>
+                <div id="result" class="result-box"></div>
+            </div>
+
+            <div class="steps-display" id="stepsSection" style="display: none;">
+                <h3>Simplification Steps:</h3>
+                <div id="steps"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

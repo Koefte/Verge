@@ -1,0 +1,82 @@
+import { Tokenizer } from './tokenizer.js';
+import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression } from './parser.js';
+import { simplify, converge } from './converge.js';
+
+// Re-export for use in frontend
+export { simplify, converge };
+
+// Declare katex for browser
+declare const katex: any;
+
+export function expressionToLatex(expr: Expression): string {
+    if (expr.type === 'NumericLiteral') {
+        const num = (expr as NumericLiteral).value;
+        return num.toString();
+    }
+    
+    if (expr.type === 'Identifier') {
+        return 'n';
+    }
+    
+    if (expr.type === 'PowerExpression') {
+        const powExp = expr as PowerExpression;
+        const base = expressionToLatex(powExp.base);
+        const exponent = expressionToLatex(powExp.exponent);
+        const baseWrapped = needsParens(powExp.base, 'power') ? `(${base})` : base;
+        return `{${baseWrapped}}^{${exponent}}`;
+    }
+    
+    if (expr.type === 'BinaryExpression') {
+        const binExp = expr as BinaryExpression;
+        const left = expressionToLatex(binExp.left);
+        const right = expressionToLatex(binExp.right);
+        
+        if (binExp.operator === '/') {
+            return `\\frac{${left}}{${right}}`;
+        }
+        
+        const leftWrapped = needsParens(binExp.left, binExp.operator) ? `(${left})` : left;
+        const rightWrapped = needsParens(binExp.right, binExp.operator) ? `(${right})` : right;
+        
+        if (binExp.operator === '*') {
+            return `${leftWrapped} \\cdot ${rightWrapped}`;
+        }
+        
+        return `${leftWrapped} ${binExp.operator} ${rightWrapped}`;
+    }
+    
+    return '';
+}
+
+function needsParens(expr: Expression, parentOp: string): boolean {
+    if (expr.type !== 'BinaryExpression') return false;
+    const binExp = expr as BinaryExpression;
+    
+    if (parentOp === 'power') {
+        return binExp.operator === '+' || binExp.operator === '-' || 
+               binExp.operator === '*' || binExp.operator === '/';
+    }
+    
+    if (parentOp === '*' || parentOp === '/') {
+        return binExp.operator === '+' || binExp.operator === '-';
+    }
+    
+    return false;
+}
+
+export function parseExpression(input: string): Expression {
+    const tokenizer = new Tokenizer(input);
+    const tokens = tokenizer.tokenize();
+    const parser = new Parser(tokens);
+    return parser.parse();
+}
+
+// Browser setup
+if (typeof window !== 'undefined') {
+    (window as any).ConvergenceTester = {
+        parseExpression,
+        simplify,
+        converge,
+        expressionToLatex
+    };
+}
