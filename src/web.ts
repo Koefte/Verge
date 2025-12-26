@@ -1,5 +1,5 @@
 import { Tokenizer } from './tokenizer.js';
-import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression } from './parser.js';
+import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression } from './parser.js';
 import { simplify, converge } from './converge.js';
 
 // Re-export for use in frontend
@@ -24,6 +24,14 @@ export function expressionToLatex(expr: Expression): string {
         const exponent = expressionToLatex(powExp.exponent);
         const baseWrapped = needsParens(powExp.base, 'power') ? `(${base})` : base;
         return `{${baseWrapped}}^{${exponent}}`;
+    }
+    
+    if (expr.type === 'UnaryExpression') {
+        const u = expr as UnaryExpression;
+        const inner = expressionToLatex(u.argument);
+        const needs = (u.argument.type === 'BinaryExpression');
+        const wrapped = needs ? `(${inner})` : inner;
+        return `${u.operator}${wrapped}`;
     }
     
     if (expr.type === 'BinaryExpression') {

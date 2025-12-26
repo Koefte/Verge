@@ -6,6 +6,8 @@ export enum TokenType {
   MULTIPLY = 'MULTIPLY',
   DIVIDE = 'DIVIDE',
   POWER = 'POWER',
+  LPAREN = 'LPAREN',
+  RPAREN = 'RPAREN',
   EOF = 'EOF',
 }
 
@@ -101,6 +103,14 @@ export class Tokenizer {
           break;
         case '^':
           tokens.push({ type: TokenType.POWER, value: '^', position });
+          this.advance();
+          break;
+        case '(':
+          tokens.push({ type: TokenType.LPAREN, value: '(', position });
+          this.advance();
+          break;
+        case ')':
+          tokens.push({ type: TokenType.RPAREN, value: ')', position });
           this.advance();
           break;
         default:

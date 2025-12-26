@@ -1,7 +1,27 @@
-import { equal } from 'assert';
-import { Expression, BinaryExpression, NumericLiteral, PowerExpression } from './parser.js';
+import { Expression, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression } from './parser.js';
+
+// Helper to check if two expressions have equal bases
+function basesEqual(base1: Expression, base2: Expression): boolean {
+    if (base1.type !== base2.type) return false;
+    if (base1.type === 'Identifier') return true; // Both are 'n' or same identifier
+    if (base1.type === 'NumericLiteral') {
+        return (base1 as NumericLiteral).value === (base2 as NumericLiteral).value;
+    }
+    // For other types, use structural equality
+    return equals(base1, base2);
+}
 
 export function simplify(expr: Expression): Expression {
+    // Handle unary expressions first
+    if (expr.type === 'UnaryExpression') {
+        const u = expr as UnaryExpression;
+        const arg = simplify(u.argument);
+        if (arg.type === 'NumericLiteral') {
+            const v = (arg as NumericLiteral).value;
+            return { type: 'NumericLiteral', value: u.operator === '-' ? -v : v } as NumericLiteral;
+        }
+        return { type: 'UnaryExpression', operator: u.operator, argument: arg } as UnaryExpression;
+    }
     if (expr.type === 'PowerExpression') {
         const powExp = expr as PowerExpression;
         const base = simplify(powExp.base);
@@ -59,6 +79,57 @@ export function simplify(expr: Expression): Expression {
     // Division: x / 1 = x
     if (binExp.operator === '/') {
         if (isNumeric(right, 1)) return left;
+        
+        // Simplify division of powers with same base: x^a / x^b = x^(a-b)
+        if (left.type === 'PowerExpression' && right.type === 'PowerExpression') {
+            const leftPow = left as PowerExpression;
+            const rightPow = right as PowerExpression;
+            // Check if bases are identical (same identifier or same numeric)
+            if (basesEqual(leftPow.base, rightPow.base) &&
+                leftPow.exponent.type === 'NumericLiteral' &&
+                rightPow.exponent.type === 'NumericLiteral') {
+                const a = (leftPow.exponent as NumericLiteral).value;
+                const b = (rightPow.exponent as NumericLiteral).value;
+                const newExp = a - b;
+                if (newExp === 0) {
+                    return { type: 'NumericLiteral', value: 1 } as NumericLiteral;
+                } else if (newExp === 1) {
+                    return leftPow.base;
+                } else {
+                    return {
+                        type: 'PowerExpression',
+                        base: leftPow.base,
+                        exponent: { type: 'NumericLiteral', value: newExp } as NumericLiteral
+                    } as PowerExpression;
+                }
+            }
+        }
+        
+        // Simplify (c*x) / (d*x) where c,d are numeric and x is the same
+        if (left.type === 'BinaryExpression' && (left as BinaryExpression).operator === '*' && 
+            right.type === 'BinaryExpression' && (right as BinaryExpression).operator === '*') {
+            const leftBin = left as BinaryExpression;
+            const rightBin = right as BinaryExpression;
+            // Check if one side is numeric and the other side matches
+            if (leftBin.left.type === 'NumericLiteral' && rightBin.left.type === 'NumericLiteral' &&
+                equals(leftBin.right, rightBin.right)) {
+                const a = (leftBin.left as NumericLiteral).value;
+                const b = (rightBin.left as NumericLiteral).value;
+                if (b !== 0) {
+                    const ratio = a / b;
+                    if (ratio === 1) {
+                        return leftBin.right;
+                    } else {
+                        return {
+                            type: 'BinaryExpression',
+                            operator: '*',
+                            left: { type: 'NumericLiteral', value: ratio } as NumericLiteral,
+                            right: leftBin.right
+                        } as BinaryExpression;
+                    }
+                }
+            }
+        }
     }
 
     // If both sides are numeric, fold the operation into a single literal
@@ -92,12 +163,15 @@ export function simplify(expr: Expression): Expression {
 }
 
 export function degree(sequence: Expression):number{
+    if(sequence.type == 'UnaryExpression'){
+        const u = sequence as UnaryExpression;
+        return degree(u.argument);
+    }
     if(sequence.type == 'PowerExpression'){
         const powExp = sequence as PowerExpression;
-        // For x^n where n is a constant, degree is n * degree(x)
-        if(powExp.exponent.type == 'NumericLiteral'){
-            const exp = (powExp.exponent as NumericLiteral).value;
-            return exp * degree(powExp.base);
+        // We will only handle x^n where n is constant 
+        if(powExp.base.type == 'Identifier' && powExp.exponent.type == 'NumericLiteral'){
+            return (powExp.exponent as NumericLiteral).value;
         }
         // For general case, degree is complex
         return degree(powExp.base) * degree(powExp.exponent);
@@ -121,6 +195,17 @@ export function degree(sequence: Expression):number{
 }
 
 export function derive(sequence: Expression):Expression{
+    if(sequence.type == 'UnaryExpression'){
+        const u = sequence as UnaryExpression;
+        const d = derive(u.argument);
+        if(u.operator === '-'){
+            if(d.type === 'NumericLiteral'){
+                return { type: 'NumericLiteral', value: - (d as NumericLiteral).value } as NumericLiteral;
+            }
+            return { type: 'UnaryExpression', operator: '-', argument: d } as UnaryExpression;
+        }
+        return d;
+    }
     if(sequence.type == 'PowerExpression'){
         const powExp = sequence as PowerExpression;
         // Power rule: (u^n)' = n * u^(n-1) * u' for constant n
@@ -232,6 +317,11 @@ export function equals(expr1: Expression, expr2: Expression):boolean{
     if(expr1.type == 'Identifier'){
         return true;
     }
+    if(expr1.type == 'UnaryExpression'){
+        const u1 = expr1 as UnaryExpression;
+        const u2 = expr2 as UnaryExpression;
+        return u1.operator === u2.operator && equals(u1.argument, u2.argument);
+    }
     if(expr1.type == 'PowerExpression'){
         const pow1 = expr1 as PowerExpression;
         const pow2 = expr2 as PowerExpression;
@@ -246,46 +336,72 @@ export function equals(expr1: Expression, expr2: Expression):boolean{
 }
 
 export function converge(sequence: Expression, maxIterations: number = 10000):number|boolean{
+    sequence = simplify(sequence);
+    if(sequence.type == 'UnaryExpression'){
+        const u = sequence as UnaryExpression;
+        const val = converge(u.argument, maxIterations);
+        if(typeof val === 'number'){
+            return u.operator === '-' ? -val : val;
+        }
+        return false;
+    }
     if(sequence.type == 'BinaryExpression'){
         const binExp = sequence as BinaryExpression;
 
         if(binExp.operator == '/'){
-            if(degree(binExp.left) != degree(binExp.right)){
-                return false;
-            }
-            let leftDerv = binExp.left;
-            let rightDerv = binExp.right;
-            let iterations = 0;
+            const leftDeg = degree(binExp.left);
+            const rightDeg = degree(binExp.right);
             
-            while(leftDerv.type != 'NumericLiteral' && iterations < maxIterations){
-                leftDerv = derive(leftDerv);
-                leftDerv = simplify(leftDerv);
-                iterations++;
-            }
-            iterations = 0;
-            while(rightDerv.type != 'NumericLiteral' && iterations < maxIterations){
-                rightDerv = derive(rightDerv);
-                rightDerv = simplify(rightDerv);
-                console.log(rightDerv);
-                iterations++;
-            }
-            console.log("Final derivatives:", leftDerv, rightDerv);
-            
-            if (leftDerv.type !== 'NumericLiteral' || rightDerv.type !== 'NumericLiteral') {
-                return false;
+            // Handle constant / polynomial
+            if(leftDeg == 0 && rightDeg > 0){
+                // Constant over polynomial → converges to 0
+                return 0;
             }
             
-            const leftNum = (leftDerv as NumericLiteral).value;
-            const rightNum = (rightDerv as NumericLiteral).value;
-            if(rightNum == 0){
-                throw new Error("Division by zero in convergence");
+            // Handle polynomial / polynomial
+            if(leftDeg > 0 && rightDeg > 0){
+                if(leftDeg < rightDeg){
+                    // Numerator degree < denominator degree → converges to 0
+                    return 0;
+                }
+                if(leftDeg > rightDeg){
+                    // Numerator degree > denominator degree → diverges
+                    return false;
+                }
+                // leftDeg == rightDeg → use L'Hôpital's rule
+                let leftDerv = binExp.left;
+                let rightDerv = binExp.right;
+                let iterations = 0;
+            
+                while(leftDerv.type != 'NumericLiteral' && iterations < maxIterations){
+                    leftDerv = derive(leftDerv);
+                    leftDerv = simplify(leftDerv);
+                    iterations++;
+                }
+                iterations = 0;
+                while(rightDerv.type != 'NumericLiteral' && iterations < maxIterations){
+                    rightDerv = derive(rightDerv);
+                    rightDerv = simplify(rightDerv);
+                    iterations++;
+                }
+                
+                if (leftDerv.type !== 'NumericLiteral' || rightDerv.type !== 'NumericLiteral') {
+                    return false;
+                }
+                
+                const leftNum = (leftDerv as NumericLiteral).value;
+                const rightNum = (rightDerv as NumericLiteral).value;
+                if(rightNum == 0){
+                    throw new Error("Division by zero in convergence");
+                }
+                return leftNum / rightNum;
             }
-            return leftNum / rightNum;
         }
 
         if(binExp.operator == '*'){
             const leftConv = converge(binExp.left, maxIterations);
             const rightConv = converge(binExp.right, maxIterations);
+
             if(typeof leftConv == 'number' && typeof rightConv == 'number'){
                 return leftConv * rightConv;
             }
@@ -315,6 +431,15 @@ export function converge(sequence: Expression, maxIterations: number = 10000):nu
         return (sequence as NumericLiteral).value;
     }
     if(sequence.type == 'Identifier'){
+        return false;
+    }
+    if(sequence.type == 'PowerExpression'){
+        if(degree(sequence) <= 0){
+            if(degree(sequence) < 0){
+                return 0;
+            }
+            return 1;
+        }
         return false;
     }
     return false;
