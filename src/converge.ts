@@ -1,4 +1,4 @@
-import { Expression, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression } from './parser.js';
+import { Expression, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression, FunctionCall } from './parser.js';
 
 // Helper to check if two expressions have equal bases
 function basesEqual(base1: Expression, base2: Expression): boolean {
@@ -21,6 +21,22 @@ export function simplify(expr: Expression): Expression {
             return { type: 'NumericLiteral', value: u.operator === '-' ? -v : v } as NumericLiteral;
         }
         return { type: 'UnaryExpression', operator: u.operator, argument: arg } as UnaryExpression;
+    }
+    // Rewrite sqrt(x) -> x^(1/2) for downstream rules; fold numeric sqrt directly
+    if (expr.type === 'FunctionCall') {
+        const func = expr as FunctionCall;
+        const arg = simplify(func.argument);
+        if (func.name === 'sqrt') {
+            if (arg.type === 'NumericLiteral') {
+                const val = (arg as NumericLiteral).value;
+                return { type: 'NumericLiteral', value: Math.sqrt(val) } as NumericLiteral;
+            }
+            return {
+                type: 'PowerExpression',
+                base: arg,
+                exponent: { type: 'NumericLiteral', value: 0.5 } as NumericLiteral
+            } as PowerExpression;
+        }
     }
     if (expr.type === 'PowerExpression') {
         const powExp = expr as PowerExpression;
@@ -381,11 +397,109 @@ export function equals(expr1: Expression, expr2: Expression):boolean{
         const bin2 = expr2 as BinaryExpression;
         return bin1.operator == bin2.operator && equals(bin1.left, bin2.left) && equals(bin1.right, bin2.right);
     }
+    if(expr1.type == 'FunctionCall'){
+        const func1 = expr1 as FunctionCall;
+        const func2 = expr2 as FunctionCall;
+        return func1.name === func2.name && equals(func1.argument, func2.argument);
+    }
     return false;
 }
 
+
+// Detect whether an expression stays bounded for large n (coarse, sufficient for trig division cases)
+function isBounded(expr: Expression): boolean {
+    if (expr.type === 'NumericLiteral') return true;
+    if (expr.type === 'UnaryExpression') {
+        return isBounded((expr as UnaryExpression).argument);
+    }
+    if (expr.type === 'FunctionCall') {
+        const func = expr as FunctionCall;
+        // sin and cos are globally bounded
+        if (func.name === 'sin' || func.name === 'cos') return true;
+        return false;
+    }
+    if (expr.type === 'BinaryExpression') {
+        const bin = expr as BinaryExpression;
+        if (bin.operator === '+' || bin.operator === '-') {
+            return isBounded(bin.left) && isBounded(bin.right);
+        }
+        if (bin.operator === '*') {
+            return isBounded(bin.left) && isBounded(bin.right);
+        }
+        if (bin.operator === '/') {
+            // Bounded numerator over growing denominator remains bounded (tends to 0)
+            if (isBounded(bin.left) && growsWithoutBound(bin.right)) return true;
+            return isBounded(bin.left) && isBounded(bin.right);
+        }
+    }
+    // Default fallback
+    return false;
+}
+
+// Rough check if an expression's magnitude grows without bound as n→∞ (polynomial-like)
+function growsWithoutBound(expr: Expression): boolean {
+    if (expr.type === 'Identifier') return true;
+    if (expr.type === 'PowerExpression') {
+        return degree(expr) > 0;
+    }
+    if (expr.type === 'UnaryExpression') {
+        return growsWithoutBound((expr as UnaryExpression).argument);
+    }
+    if (expr.type === 'BinaryExpression') {
+        const bin = expr as BinaryExpression;
+        if (bin.operator === '+' || bin.operator === '-') {
+            return growsWithoutBound(bin.left) || growsWithoutBound(bin.right);
+        }
+        if (bin.operator === '*') {
+            // If either factor grows without bound and the other is not zero-only, treat as unbounded
+            return (growsWithoutBound(bin.left) && !isNumericZero(bin.right)) || (growsWithoutBound(bin.right) && !isNumericZero(bin.left));
+        }
+        if (bin.operator === '/') {
+            // Growing numerator over bounded denominator -> grows; bounded over growing -> does not grow
+            if (growsWithoutBound(bin.left) && isBounded(bin.right)) return true;
+            if (isBounded(bin.left) && growsWithoutBound(bin.right)) return false;
+        }
+    }
+    return false;
+}
+
+function isNumericZero(expr: Expression): boolean {
+    return expr.type === 'NumericLiteral' && (expr as NumericLiteral).value === 0;
+}
+
+
 export function converge(sequence: Expression, maxIterations: number = 10000):number|boolean{
     sequence = simplify(sequence);
+
+    // Handle sin/cos via the sandwich (squeeze) lemma
+    if(sequence.type === 'FunctionCall'){
+        const func = sequence as FunctionCall;
+        const argLimit = converge(func.argument, maxIterations);
+        if(typeof argLimit !== 'number'){
+            return false;
+        }
+
+        const absArgLimit = Math.abs(argLimit);
+
+        if(func.name === 'sin'){
+            // For all x: -|x| <= sin(x) <= |x|; if |x| -> 0, both bounds -> 0.
+            if(absArgLimit === 0){
+                return 0;
+            }
+            return false;
+        }
+
+        if(func.name === 'cos'){
+            // For |x| small: 1 - x^2/2 <= cos(x) <= 1; if x -> 0, both bounds -> 1.
+            if(absArgLimit === 0){
+                return 1;
+            }
+            return false;
+        }
+
+        // Unknown function
+        return false;
+    }
     if(sequence.type == 'UnaryExpression'){
         const u = sequence as UnaryExpression;
         const val = converge(u.argument, maxIterations);
@@ -398,6 +512,15 @@ export function converge(sequence: Expression, maxIterations: number = 10000):nu
         const binExp = sequence as BinaryExpression;
 
         if(binExp.operator == '/'){
+            // If numerator is bounded (e.g., sin, cos) and denominator grows without bound, limit is 0 by squeeze
+            if (isBounded(binExp.left) && growsWithoutBound(binExp.right)) {
+                return 0;
+            }
+
+            if(growsWithoutBound(binExp.left) && isBounded(binExp.right)){
+                return false;
+            }
+
             const leftDeg = degree(binExp.left);
             const rightDeg = degree(binExp.right);
             

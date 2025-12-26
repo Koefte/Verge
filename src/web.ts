@@ -1,5 +1,5 @@
 import { Tokenizer } from './tokenizer.js';
-import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression } from './parser.js';
+import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression, FunctionCall } from './parser.js';
 import { simplify, converge } from './converge.js';
 
 // Re-export for use in frontend
@@ -32,6 +32,20 @@ export function expressionToLatex(expr: Expression): string {
         const needs = (u.argument.type === 'BinaryExpression');
         const wrapped = needs ? `(${inner})` : inner;
         return `${u.operator}${wrapped}`;
+    }
+
+    if (expr.type === 'FunctionCall') {
+        const func = expr as FunctionCall;
+        const argLatex = expressionToLatex(func.argument);
+        const needs = func.argument.type === 'BinaryExpression' || func.argument.type === 'UnaryExpression';
+        const wrappedArg = needs ? `(${argLatex})` : argLatex;
+        if (func.name === 'sqrt') {
+            return `\\sqrt{${argLatex}}`;
+        }
+        if (func.name === 'sin' || func.name === 'cos') {
+            return `\\${func.name}\\left(${wrappedArg}\\right)`;
+        }
+        return `\\operatorname{${func.name}}\\left(${wrappedArg}\\right)`;
     }
     
     if (expr.type === 'BinaryExpression') {

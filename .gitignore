@@ -6,6 +6,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Temporary files
+src/temporary.ts
+
 # Environment variables
 .env
 .env.local

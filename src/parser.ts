@@ -24,6 +24,12 @@ export interface UnaryExpression extends Expression {
     argument: Expression;
 }
 
+export interface FunctionCall extends Expression {
+    type: 'FunctionCall';
+    name: string; // 'sin', 'cos', etc.
+    argument: Expression;
+}
+
 interface Identifier extends Expression {
     type: 'Identifier';
     name: string;
@@ -86,10 +92,7 @@ export class Parser {
             return true;
         }
 
-        // IDENTIFIER followed by LPAREN: x(y) -> x*(y)
-        if (previous.type === TokenType.IDENTIFIER && current.type === TokenType.LPAREN) {
-            return true;
-        }
+        // Note: IDENTIFIER followed by LPAREN is NOT implicit multiply - it's a function call
         
         return false;
     }
@@ -106,10 +109,28 @@ export class Parser {
         }
 
         if (token.type === TokenType.IDENTIFIER) {
-            this.advance();
+            const identToken = this.advance();
+            const identName = identToken.value;
+            
+            // Check if this is a function call
+            if (!this.isAtEnd() && this.peek().type === TokenType.LPAREN) {
+                this.advance(); // consume (
+                const arg = this.parseExpression();
+                if (this.peek().type !== TokenType.RPAREN) {
+                    throw new Error(`Expected ')' but got '${this.peek().value}'`);
+                }
+                this.advance(); // consume )
+                return {
+                    type: 'FunctionCall',
+                    name: identName,
+                    argument: arg
+                } as FunctionCall;
+            }
+            
+            // Otherwise, it's just an identifier
             return {
                 type: 'Identifier',
-                name: token.value
+                name: identName
             } as Identifier;
         }
 

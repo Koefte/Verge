@@ -148,6 +148,37 @@ const testCases: TestCase[] = [
         expected: 1,
         tolerance: 0.0001
     },
+
+    // Trig squeeze cases
+    {
+        name: "Trig: sin(n)/n -> 0",
+        expression: "sin(n)/n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Trig: (sin(n)+cos(n))/n -> 0",
+        expression: "(sin(n)+cos(n))/n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Trig: sin(1/n) -> 0",
+        expression: "sin(1/n)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Trig: cos(1/n) -> 1",
+        expression: "cos(1/n)",
+        expected: 1,
+        tolerance: 0.0001
+    },
+    {
+        name: "Trig: sin(n) diverges",
+        expression: "sin(n)",
+        expected: false
+    }
 ];
 
 function testExpressionParsing(expr: string): Expression {
