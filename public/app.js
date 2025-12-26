@@ -25,11 +25,11 @@ document.getElementById('checkBtn').addEventListener('click', () => {
         resultEl.className = 'result-box';
         if (result === false) {
             resultEl.className += ' diverges';
-            resultEl.innerHTML = '❌ The series <strong>diverges</strong>';
+            resultEl.innerHTML = '❌ The series diverges';
         } else {
             resultEl.className += ' converges';
             const limitLatex = typeof result === 'number' ? result.toString() : 'L';
-            resultEl.innerHTML = `✅ The series <strong>converges</strong> to: ${result}`;
+            resultEl.innerHTML = `✅ The series converges to: ${result}`;
         }
         
         // Hide steps section for now

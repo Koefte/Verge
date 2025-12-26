@@ -1,3 +1,4 @@
+import { equal } from 'assert';
 import { Expression, BinaryExpression, NumericLiteral, PowerExpression } from './parser.js';
 
 export function simplify(expr: Expression): Expression {
@@ -58,6 +59,27 @@ export function simplify(expr: Expression): Expression {
     // Division: x / 1 = x
     if (binExp.operator === '/') {
         if (isNumeric(right, 1)) return left;
+    }
+
+    // If both sides are numeric, fold the operation into a single literal
+    if (left.type === 'NumericLiteral' && right.type === 'NumericLiteral') {
+        const a = (left as NumericLiteral).value;
+        const b = (right as NumericLiteral).value;
+        switch (binExp.operator) {
+            case '+':
+                return { type: 'NumericLiteral', value: a + b } as NumericLiteral;
+            case '-':
+                return { type: 'NumericLiteral', value: a - b } as NumericLiteral;
+            case '*':
+                return { type: 'NumericLiteral', value: a * b } as NumericLiteral;
+            case '/':
+                // Avoid producing invalid literals on division by zero
+                if (b !== 0) {
+                    return { type: 'NumericLiteral', value: a / b } as NumericLiteral;
+                }
+                // If dividing by zero, skip folding and return structured expression
+                break;
+        }
     }
 
     // Return simplified expression with simplified children
@@ -200,7 +222,30 @@ export function derive(sequence: Expression):Expression{
     return sequence;
 }
 
-export function converge(sequence: Expression, maxIterations: number = 100):number|boolean{
+export function equals(expr1: Expression, expr2: Expression):boolean{
+    if(expr1.type != expr2.type){
+        return false;
+    }
+    if(expr1.type == 'NumericLiteral'){
+        return (expr1 as NumericLiteral).value == (expr2 as NumericLiteral).value;
+    }
+    if(expr1.type == 'Identifier'){
+        return true;
+    }
+    if(expr1.type == 'PowerExpression'){
+        const pow1 = expr1 as PowerExpression;
+        const pow2 = expr2 as PowerExpression;
+        return equals(pow1.base, pow2.base) && equals(pow1.exponent, pow2.exponent);
+    }
+    if(expr1.type == 'BinaryExpression'){
+        const bin1 = expr1 as BinaryExpression;
+        const bin2 = expr2 as BinaryExpression;
+        return bin1.operator == bin2.operator && equals(bin1.left, bin2.left) && equals(bin1.right, bin2.right);
+    }
+    return false;
+}
+
+export function converge(sequence: Expression, maxIterations: number = 10000):number|boolean{
     if(sequence.type == 'BinaryExpression'){
         const binExp = sequence as BinaryExpression;
 
@@ -221,8 +266,10 @@ export function converge(sequence: Expression, maxIterations: number = 100):numb
             while(rightDerv.type != 'NumericLiteral' && iterations < maxIterations){
                 rightDerv = derive(rightDerv);
                 rightDerv = simplify(rightDerv);
+                console.log(rightDerv);
                 iterations++;
             }
+            console.log("Final derivatives:", leftDerv, rightDerv);
             
             if (leftDerv.type !== 'NumericLiteral' || rightDerv.type !== 'NumericLiteral') {
                 return false;
@@ -230,6 +277,9 @@ export function converge(sequence: Expression, maxIterations: number = 100):numb
             
             const leftNum = (leftDerv as NumericLiteral).value;
             const rightNum = (rightDerv as NumericLiteral).value;
+            if(rightNum == 0){
+                throw new Error("Division by zero in convergence");
+            }
             return leftNum / rightNum;
         }
 
@@ -250,6 +300,9 @@ export function converge(sequence: Expression, maxIterations: number = 100):numb
             return false;
         }
         if(binExp.operator == '-'){
+            if(equals(binExp.left, binExp.right)){
+                return 0;
+            }
             const leftConv = converge(binExp.left, maxIterations);
             const rightConv = converge(binExp.right, maxIterations);
             if(typeof leftConv == 'number' && typeof rightConv == 'number'){
