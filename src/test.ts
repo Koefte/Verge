@@ -1,6 +1,6 @@
 import { Tokenizer } from './tokenizer.js';
 import { Parser } from './parser.js';
-import { converge, parseFunction } from './converge.js';
+import { converge, parseFunction, ConvergenceResult } from './converge.js';
 import { Expression } from './parser.js';
 
 interface TestCase {
@@ -56,7 +56,16 @@ const testCases: TestCase[] = [
         expected: 2,
         tolerance: 0.0001
     },
-    
+    {
+        name: "Harmonic 1/n",
+        expression: "1/n",
+        expected: 0 // converges to 0
+    },
+    {
+        name: "Harmonic n^-1",
+        expression: "n^-1",
+        expected: 0 // converges to 0
+    },
     // Negative exponents
     {
         name: "Negative exponents: (2n^-2)/(2n^-1)",
@@ -233,15 +242,15 @@ function runTests(): void {
 
             if (testCase.expected === false) {
                 // Expect divergence
-                success = result === false;
-                actualStr = result === false ? 'diverges' : `converges to ${result}`;
+                success = !result.converges;
+                actualStr = !result.converges ? 'diverges' : `converges to ${result.limit}`;
             } else {
                 // Expect convergence to specific value
-                if (typeof result === 'number') {
+                if (result.converges) {
                     const tolerance = testCase.tolerance || 0.0001;
                     const expectedNum = testCase.expected as number;
-                    success = Math.abs(result - expectedNum) < tolerance;
-                    actualStr = `${result.toFixed(6)}`;
+                    success = Math.abs(result.limit! - expectedNum) < tolerance;
+                    actualStr = `${result.limit!.toFixed(6)}`;
                 } else {
                     actualStr = 'diverges';
                 }
@@ -249,8 +258,9 @@ function runTests(): void {
 
             const status = success ? '✓ PASS' : '✗ FAIL';
             console.log(`${status} | ${testCase.name}`);
+            console.log(`      Expression: ${testCase.expression}`);
+            console.log(`      Result: converges=${result.converges}, limit=${result.limit}, divergeTo=${result.divergeTo}, growthKind=${result.growthKind}`);
             if (!success) {
-                console.log(`      Expression: ${testCase.expression}`);
                 const expectedDisplay = testCase.expected === false ? 'diverges' : (testCase.expected as number).toFixed(6);
                 console.log(
                     `      Expected: ${expectedDisplay}`

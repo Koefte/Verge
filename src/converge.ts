@@ -301,16 +301,33 @@ class EExpFunction extends BaseFunction {
 }
 
 
-interface ConvergenceResult {
-    converges: boolean;
+export class ConvergenceResult {
+    converges: boolean = false;
     limit?: number;
     divergeTo?: number; // +Infinity or -Infinity
-    divergenceKind?: DivergenceKind;
+    growthKind?: GrowthKind;
+    converge(limit:number,growthKind:GrowthKind):this{
+        this.converges = true;
+        this.limit = limit;
+        this.growthKind = growthKind;
+        return this;
+    }
+    diverge(divergeTo:number,growthKind:GrowthKind):this{
+        this.converges = false;
+        this.divergeTo = divergeTo;
+        this.growthKind = growthKind;
+        return this;
+    }
+    divergeIndeterminant():this{
+        this.converges = false;
+        return this;
+    }
 }
 
-enum DivergenceKind {
+export enum GrowthKind {
     Exponential,
     Polynomial,
+    Logarithmic
 }
 
 
@@ -411,56 +428,108 @@ export function parseFunction(expr: Expression): BaseFunction {
     throw new Error("Unsupported expression for function parsing");
 }
 
-export function converge(func: BaseFunction): number | false {
+export function converge(func: BaseFunction): ConvergenceResult {
     if(func instanceof RationalFunction){
-        if(func.numerator instanceof Polynomial && func.denominator instanceof Polynomial){
-            const degreeNum = (func.numerator as Polynomial).coefficients.length - 1;
-            const degreeDen = (func.denominator as Polynomial).coefficients.length - 1;
-            if(degreeNum < degreeDen){
-                return 0;
-            } else if (degreeNum == degreeDen){
-                const coeffNum = (func.numerator as Polynomial).coefficients[degreeNum];
-                const coeffDen = (func.denominator as Polynomial).coefficients[degreeDen];
-                return coeffNum / coeffDen;
-            } else {
-                return false;
+       if(func.numerator instanceof Polynomial && func.denominator instanceof Polynomial){
+            const numDegree = func.numerator.coefficients.length - 1;
+            const denDegree = func.denominator.coefficients.length - 1;
+            if(numDegree < denDegree){
+                return new ConvergenceResult().converge(0,GrowthKind.Polynomial);
             }
-        }
-        if(func.numerator instanceof RationalFunction || func.denominator instanceof RationalFunction){
-            return converge(func.numerator.divide(func.denominator));
-        }
-        return false;
+            if(numDegree == denDegree){
+                const numLeadingCoeff = func.numerator.coefficients[numDegree];
+                const denLeadingCoeff = func.denominator.coefficients[denDegree];
+                return new ConvergenceResult().converge(numLeadingCoeff / denLeadingCoeff,GrowthKind.Polynomial);
+            }
+            if(numDegree > denDegree){
+                return new ConvergenceResult().diverge(Infinity * Math.sign(func.numerator.coefficients[numDegree] / func.denominator.coefficients[denDegree]),GrowthKind.Polynomial);
+            }
+       }
+       if(func.numerator instanceof RationalFunction || func.denominator instanceof RationalFunction){
+            const numeratorLimit = converge(func.numerator);
+            const denominatorLimit = converge(func.denominator);
+            if(!numeratorLimit.converges || !denominatorLimit.converges){
+                return new ConvergenceResult().divergeIndeterminant();
+            }
+            if(denominatorLimit.limit === 0){
+                return new ConvergenceResult().divergeIndeterminant();
+            }
+            return new ConvergenceResult().converge(
+                numeratorLimit.limit! / denominatorLimit.limit!,
+                GrowthKind.Polynomial
+            );
+       }
+       throw new Error("Failed to evaluate limt of rational function");
     }
     if(func instanceof Polynomial){
         const degree = func.coefficients.length - 1;
         if(degree <= 0){
-            return func.coefficients[0]; 
+            return new ConvergenceResult().converge(func.coefficients[0],GrowthKind.Polynomial); 
         }
         if(degree > 0){
-            return Infinity * Math.sign(func.coefficients[degree]);
+            return new ConvergenceResult().diverge(Infinity * Math.sign(func.coefficients[degree]),GrowthKind.Polynomial);
         }
     }
-    if(func instanceof EExpFunction || func instanceof LogFunction || func instanceof LnFunction || func instanceof SinFunction || func instanceof CosFunction || func instanceof TanFunction){
+    if(func instanceof EExpFunction || func instanceof LogFunction || func instanceof LnFunction || func instanceof SinFunction || func instanceof CosFunction || func instanceof TanFunction || func instanceof SqrtFunction){
         // these are all continous functions
         const argConverge = converge(func.argument);
-        if(argConverge === false){
-            return false;
+        if(argConverge.converges === false && !argConverge.divergeTo){
+            return new ConvergenceResult().divergeIndeterminant();
         }
-        if(func instanceof EExpFunction){
-            return Math.E ** (argConverge as number);
+        if (argConverge.converges) {
+            if(func instanceof EExpFunction){
+                return new ConvergenceResult().converge(Math.E ** argConverge.limit!,GrowthKind.Exponential);
+            }
+            if(func instanceof LogFunction){
+                // use ln formula change of base
+                return new ConvergenceResult().converge(
+                    Math.log(argConverge.limit!) / Math.log((func as LogFunction).base),
+                    GrowthKind.Logarithmic
+                );
+            }
+            if(func instanceof LnFunction){
+                return new ConvergenceResult().converge(
+                    Math.log(argConverge.limit!),
+                    GrowthKind.Logarithmic
+                );
+            }
+            if(func instanceof SinFunction){
+                return new ConvergenceResult().converge(
+                    Math.sin(argConverge.limit!),
+                    GrowthKind.Polynomial
+                );
+            }
+            if(func instanceof CosFunction){
+                return new ConvergenceResult().converge(
+                    Math.cos(argConverge.limit!),
+                    GrowthKind.Polynomial
+                );
+            }
+            if(func instanceof SqrtFunction){
+                return new ConvergenceResult().converge(
+                    Math.sqrt(argConverge.limit!),
+                    GrowthKind.Polynomial
+                );
+            }
         }
-        if(func instanceof LogFunction){
-            // use ln formula change of base
-            return Math.log(argConverge as number) / Math.log((func as LogFunction).base);
-        }
-        if(func instanceof LnFunction){
-            return Math.log(argConverge as number);
-        }
-        if(func instanceof SinFunction){
-            return Math.sin(argConverge as number);
-        }
-        if(func instanceof CosFunction){
-            return Math.cos(argConverge as number);
+        if(argConverge.divergeTo !== undefined){
+            if(func instanceof EExpFunction){
+                if(argConverge.divergeTo > 0){
+                    return new ConvergenceResult().diverge(Infinity,GrowthKind.Exponential);
+                } else {
+                    return new ConvergenceResult().converge(0,GrowthKind.Exponential);
+                }
+            }
+            else if(func instanceof LnFunction || func instanceof LogFunction){
+                if(argConverge.divergeTo > 0){
+                    return new ConvergenceResult().diverge(Infinity,GrowthKind.Logarithmic);
+                } else {
+                    return new ConvergenceResult().divergeIndeterminant();
+                }
+            }
+            else if(func instanceof SinFunction || func instanceof CosFunction){
+                return new ConvergenceResult().divergeIndeterminant();
+            }
         }
         if(func instanceof TanFunction){
             throw new Error("Convergence of tangent function not supported");
@@ -469,27 +538,39 @@ export function converge(func: BaseFunction): number | false {
     if(func instanceof AddFunction){
         let leftConverge = converge(func.left);
         let rightConverge = converge(func.right);
-        if(leftConverge === false || rightConverge === false){
-            return false;
+        if(!leftConverge.converges || !rightConverge.converges){
+            return new ConvergenceResult().divergeIndeterminant();
         }
-        return (leftConverge as number) + (rightConverge as number);
+        return new ConvergenceResult().converge(
+            leftConverge.limit! + rightConverge.limit!,
+            GrowthKind.Polynomial
+        );
     }
     if(func instanceof MultiplyFunction){
         let leftConverge = converge(func.left);
         let rightConverge = converge(func.right);
-        if(leftConverge === false || rightConverge === false){
-            return false;
+        if(!leftConverge.converges || !rightConverge.converges){
+            return new ConvergenceResult().divergeIndeterminant();
         }
-        return (leftConverge as number) * (rightConverge as number);
+        return new ConvergenceResult().converge(
+            leftConverge.limit! * rightConverge.limit!,
+            GrowthKind.Polynomial
+        );
     }
     if(func instanceof DivideFunction){
         let numeratorConverge = converge(func.numerator);
         let denominatorConverge = converge(func.denominator);
-        if(numeratorConverge === false || denominatorConverge === false){
-            return false;
+        if(!numeratorConverge.converges || !denominatorConverge.converges){
+            return new ConvergenceResult().divergeIndeterminant();
         }
-        return (numeratorConverge as number) / (denominatorConverge as number);
+        if(denominatorConverge.limit === 0){
+            return new ConvergenceResult().divergeIndeterminant();
+        }
+        return new ConvergenceResult().converge(
+            numeratorConverge.limit! / denominatorConverge.limit!,
+            GrowthKind.Polynomial
+        );
     }
-    return false;
+    return new ConvergenceResult().divergeIndeterminant();
 }
 
