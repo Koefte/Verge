@@ -1,9 +1,9 @@
 import { Tokenizer } from './tokenizer.js';
 import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression, FunctionCall } from './parser.js';
-import { simplify, converge } from './converge.js';
+import { converge } from './converge.js';
 
 // Re-export for use in frontend
-export { simplify, converge };
+export { converge };
 
 // Declare katex for browser
 declare const katex: any;
@@ -99,7 +99,6 @@ export function parseExpression(input: string): Expression {
 if (typeof window !== 'undefined') {
     (window as any).ConvergenceTester = {
         parseExpression,
-        simplify,
         converge,
         expressionToLatex
     };

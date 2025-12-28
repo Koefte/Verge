@@ -1,6 +1,6 @@
 import { Tokenizer } from './tokenizer.js';
 import { Parser } from './parser.js';
-import { simplify, converge } from './converge.js';
+import { converge, parseFunction } from './converge.js';
 import { Expression } from './parser.js';
 
 interface TestCase {
@@ -225,8 +225,8 @@ function runTests(): void {
     for (const testCase of testCases) {
         try {
             const ast = testExpressionParsing(testCase.expression);
-            const simplified = simplify(ast);
-            const result = converge(simplified);
+            const func = parseFunction(ast);
+            const result = converge(func);
 
             let success = false;
             let actualStr = '';

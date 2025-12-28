@@ -1,735 +1,495 @@
 import { Expression, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression, FunctionCall } from './parser.js';
 
-// Helper to check if two expressions have equal bases
-function basesEqual(base1: Expression, base2: Expression): boolean {
-    if (base1.type !== base2.type) return false;
-    if (base1.type === 'Identifier') return true; // Both are 'n' or same identifier
-    if (base1.type === 'NumericLiteral') {
-        return (base1 as NumericLiteral).value === (base2 as NumericLiteral).value;
-    }
-    // For other types, use structural equality
-    return equals(base1, base2);
+
+// Base function interface for all function types
+abstract class BaseFunction {
+    abstract add(other: BaseFunction): BaseFunction;
+    abstract multiply(other: BaseFunction): BaseFunction;
+    abstract divide(other: BaseFunction): BaseFunction;
 }
 
-export function simplify(expr: Expression): Expression {
-    // Handle unary expressions first
-    if (expr.type === 'UnaryExpression') {
-        const u = expr as UnaryExpression;
-        const arg = simplify(u.argument);
-        if (arg.type === 'NumericLiteral') {
-            const v = (arg as NumericLiteral).value;
-            return { type: 'NumericLiteral', value: u.operator === '-' ? -v : v } as NumericLiteral;
-        }
-        return { type: 'UnaryExpression', operator: u.operator, argument: arg } as UnaryExpression;
+class Polynomial extends BaseFunction {
+    coefficients: number[]; // coefficients[i] corresponds to x^i
+    constructor(coefficients: number[]) {
+        super()
+        this.coefficients = coefficients;
     }
-    // Simplify function calls: fold numeric values
-    if (expr.type === 'FunctionCall') {
-        const func = expr as FunctionCall;
-        const arg = simplify(func.argument);
-        if (arg.type === 'NumericLiteral') {
-            const val = (arg as NumericLiteral).value;
-            if (func.name === 'sqrt') {
-                return { type: 'NumericLiteral', value: Math.sqrt(val) } as NumericLiteral;
+    add(other: BaseFunction): BaseFunction {
+        if (other instanceof Polynomial) {
+            const maxDegree = Math.max(this.coefficients.length, other.coefficients.length);
+            const newCoeffs = new Array(maxDegree).fill(0);
+            for (let i = 0; i < maxDegree; i++) {
+                const a = i < this.coefficients.length ? this.coefficients[i] : 0;
+                const b = i < other.coefficients.length ? other.coefficients[i] : 0;
+                newCoeffs[i] = a + b;
             }
-            if (func.name === 'sin') {
-                return { type: 'NumericLiteral', value: Math.sin(val) } as NumericLiteral;
-            }
-            if (func.name === 'cos') {
-                return { type: 'NumericLiteral', value: Math.cos(val) } as NumericLiteral;
-            }
-            if (func.name === 'exp') {
-                return { type: 'NumericLiteral', value: Math.exp(val) } as NumericLiteral;
-            }
+            return new Polynomial(newCoeffs);
         }
-        return {
-            type: 'FunctionCall',
-            name: func.name,
-            argument: arg
-        } as FunctionCall;
+        else if (other instanceof RationalFunction) {
+            const ac = this.multiply(other.denominator);
+            const newNumerator = ac.add(other.numerator);
+            return new RationalFunction(newNumerator, other.denominator);
+        }
+        else {
+            return new AddFunction(this, other);
+        }
     }
-    if (expr.type === 'PowerExpression') {
-        const powExp = expr as PowerExpression;
-        const base = simplify(powExp.base);
-        const exponent = simplify(powExp.exponent);
+    multiply(other: BaseFunction): BaseFunction {
+        if (other instanceof Polynomial) {
+            const newDegree = this.coefficients.length + other.coefficients.length - 1;
+            const newCoeffs = new Array(newDegree).fill(0);
+            for (let i = 0; i < this.coefficients.length; i++) {
+                for (let j = 0; j < other.coefficients.length; j++) {
+                    newCoeffs[i + j] += this.coefficients[i] * other.coefficients[j];
+                }
+            }
+            return new Polynomial(newCoeffs);
         
-        const isNumeric = (e: Expression, value: number): boolean => {
-            return e.type === 'NumericLiteral' && (e as NumericLiteral).value === value;
-        };
-        
-        // x^0 = 1, x^1 = x, 1^x = 1, 0^x = 0 (x > 0)
-        if (isNumeric(exponent, 0)) return { type: 'NumericLiteral', value: 1 } as NumericLiteral;
-        if (isNumeric(exponent, 1)) return base;
-        if (isNumeric(base, 1)) return base;
-        if (isNumeric(base, 0)) return base;
-        
-        return {
-            type: 'PowerExpression',
-            base,
-            exponent
-        } as PowerExpression;
-    }
-    
-    if (expr.type !== 'BinaryExpression') {
-        return expr;
-    }
-
-    const binExp = expr as BinaryExpression;
-    const left = simplify(binExp.left);
-    const right = simplify(binExp.right);
-
-    // Helper to check if expression is a numeric literal with a specific value
-    const isNumeric = (e: Expression, value: number): boolean => {
-        return e.type === 'NumericLiteral' && (e as NumericLiteral).value === value;
-    };
-
-    // Addition: x + 0 = x, 0 + x = x
-    if (binExp.operator === '+') {
-        if (isNumeric(left, 0)) return right;
-        if (isNumeric(right, 0)) return left;
-    }
-
-    // Subtraction: x - 0 = x
-    if (binExp.operator === '-') {
-        if (isNumeric(right, 0)) return left;
-    }
-
-    // Multiplication: x * 1 = x, 1 * x = x, x * 0 = 0, 0 * x = 0
-    if (binExp.operator === '*') {
-        if (isNumeric(left, 1)) return right;
-        if (isNumeric(right, 1)) return left;
-        if (isNumeric(left, 0)) return left;
-        if (isNumeric(right, 0)) return right;
-    }
-
-    // Division: x / 1 = x
-    if (binExp.operator === '/') {
-        if (isNumeric(right, 1)) return left;
-        
-        // Simplify division of powers with same base: x^a / x^b = x^(a-b)
-        if (left.type === 'PowerExpression' && right.type === 'PowerExpression') {
-            const leftPow = left as PowerExpression;
-            const rightPow = right as PowerExpression;
-            // Check if bases are identical (same identifier or same numeric)
-            if (basesEqual(leftPow.base, rightPow.base) &&
-                leftPow.exponent.type === 'NumericLiteral' &&
-                rightPow.exponent.type === 'NumericLiteral') {
-                const a = (leftPow.exponent as NumericLiteral).value;
-                const b = (rightPow.exponent as NumericLiteral).value;
-                const newExp = a - b;
-                if (newExp === 0) {
-                    return { type: 'NumericLiteral', value: 1 } as NumericLiteral;
-                } else if (newExp === 1) {
-                    return leftPow.base;
-                } else {
-                    return {
-                        type: 'PowerExpression',
-                        base: leftPow.base,
-                        exponent: { type: 'NumericLiteral', value: newExp } as NumericLiteral
-                    } as PowerExpression;
-                }
-            }
         }
-        
-        // Simplify (c*x) / (d*x) where c,d are numeric and x is the same
-        if (left.type === 'BinaryExpression' && (left as BinaryExpression).operator === '*' && 
-            right.type === 'BinaryExpression' && (right as BinaryExpression).operator === '*') {
-            const leftBin = left as BinaryExpression;
-            const rightBin = right as BinaryExpression;
-            // Check if one side is numeric and the other side matches
-            if (leftBin.left.type === 'NumericLiteral' && rightBin.left.type === 'NumericLiteral' &&
-                equals(leftBin.right, rightBin.right)) {
-                const a = (leftBin.left as NumericLiteral).value;
-                const b = (rightBin.left as NumericLiteral).value;
-                if (b !== 0) {
-                    const ratio = a / b;
-                    if (ratio === 1) {
-                        return leftBin.right;
-                    } else {
-                        return {
-                            type: 'BinaryExpression',
-                            operator: '*',
-                            left: { type: 'NumericLiteral', value: ratio } as NumericLiteral,
-                            right: leftBin.right
-                        } as BinaryExpression;
-                    }
-                }
-            }
-            
-            // Simplify (c*x^a) / (d*x^b) where c,d are numeric and x has same base
-            if (leftBin.left.type === 'NumericLiteral' && rightBin.left.type === 'NumericLiteral' &&
-                leftBin.right.type === 'PowerExpression' && rightBin.right.type === 'PowerExpression') {
-                const leftPow = leftBin.right as PowerExpression;
-                const rightPow = rightBin.right as PowerExpression;
-                
-                if (basesEqual(leftPow.base, rightPow.base) &&
-                    leftPow.exponent.type === 'NumericLiteral' &&
-                    rightPow.exponent.type === 'NumericLiteral') {
-                    const c = (leftBin.left as NumericLiteral).value;
-                    const d = (rightBin.left as NumericLiteral).value;
-                    const a = (leftPow.exponent as NumericLiteral).value;
-                    const b = (rightPow.exponent as NumericLiteral).value;
-                    
-                    if (d !== 0) {
-                        const ratio = c / d;
-                        const newExp = a - b;
-                        
-                        // Build the power part
-                        let powerPart: Expression;
-                        if (newExp === 0) {
-                            powerPart = { type: 'NumericLiteral', value: 1 } as NumericLiteral;
-                        } else if (newExp === 1) {
-                            powerPart = leftPow.base;
-                        } else {
-                            powerPart = {
-                                type: 'PowerExpression',
-                                base: leftPow.base,
-                                exponent: { type: 'NumericLiteral', value: newExp } as NumericLiteral
-                            } as PowerExpression;
-                        }
-                        
-                        // Combine with ratio
-                        if (ratio === 1) {
-                            return powerPart;
-                        } else if (powerPart.type === 'NumericLiteral' && (powerPart as NumericLiteral).value === 1) {
-                            return { type: 'NumericLiteral', value: ratio } as NumericLiteral;
-                        } else {
-                            return {
-                                type: 'BinaryExpression',
-                                operator: '*',
-                                left: { type: 'NumericLiteral', value: ratio } as NumericLiteral,
-                                right: powerPart
-                            } as BinaryExpression;
-                        }
-                    }
-                }
-            }
+        else if (other instanceof RationalFunction){
+            const newNumerator = this.multiply(other.numerator);
+            return new RationalFunction(newNumerator, other.denominator);
+        }
+        else {
+            return new MultiplyFunction(this, other);
         }
     }
-
-    // If both sides are numeric, fold the operation into a single literal
-    if (left.type === 'NumericLiteral' && right.type === 'NumericLiteral') {
-        const a = (left as NumericLiteral).value;
-        const b = (right as NumericLiteral).value;
-        switch (binExp.operator) {
-            case '+':
-                return { type: 'NumericLiteral', value: a + b } as NumericLiteral;
-            case '-':
-                return { type: 'NumericLiteral', value: a - b } as NumericLiteral;
-            case '*':
-                return { type: 'NumericLiteral', value: a * b } as NumericLiteral;
-            case '/':
-                // Avoid producing invalid literals on division by zero
-                if (b !== 0) {
-                    return { type: 'NumericLiteral', value: a / b } as NumericLiteral;
-                }
-                // If dividing by zero, skip folding and return structured expression
-                break;
+    divide(other: BaseFunction): BaseFunction {
+        if (other instanceof Polynomial) {
+            return new RationalFunction(this, other);
+        }
+        else if (other instanceof RationalFunction) {
+            // (A) / (C/D) = (A*D) / C
+            return new RationalFunction(this.multiply(other.denominator), other.numerator);
+        }
+        else {
+            return new DivideFunction(this, other);
         }
     }
-
-    // Return simplified expression with simplified children
-    return {
-        type: 'BinaryExpression',
-        operator: binExp.operator,
-        left,
-        right
-    } as BinaryExpression;
 }
 
-export function degree(sequence: Expression):number{
-    if(sequence.type == 'UnaryExpression'){
-        const u = sequence as UnaryExpression;
-        return degree(u.argument);
+class RationalFunction extends BaseFunction {
+    numerator: BaseFunction;
+    denominator: BaseFunction;
+    constructor(numerator: BaseFunction, denominator: BaseFunction) {
+        super()
+        this.numerator = numerator;
+        this.denominator = denominator;
     }
-    if(sequence.type == 'PowerExpression'){
-        const powExp = sequence as PowerExpression;
-        // We will only handle x^n where n is constant 
-        if(powExp.base.type == 'Identifier' && powExp.exponent.type == 'NumericLiteral'){
-            return (powExp.exponent as NumericLiteral).value;
+    add(other: BaseFunction): BaseFunction {
+        // (A/B) + (C/D) = (AD + BC) / BD
+        if(other instanceof RationalFunction){
+            const ad  = this.numerator.multiply(other.denominator);
+            const bc = this.denominator.multiply(other.numerator);
+            const bd = this.denominator.multiply(other.denominator);
+            const newNumerator = ad.add(bc);
+            return new RationalFunction(newNumerator, bd);
+        } else if (other instanceof Polynomial) {
+            // (A/B) + C = (A + BC) / B
+            const bc = this.denominator.multiply(other);
+            const newNumerator = this.numerator.add(bc);
+            return new RationalFunction(newNumerator, this.denominator);
         }
-        // For general case, degree is complex
-        return degree(powExp.base) * degree(powExp.exponent);
-    } else if(sequence.type == 'BinaryExpression'){
-        const binExp = sequence as BinaryExpression;
-        if(binExp.operator == '*'){
-            return degree(binExp.left) + degree(binExp.right);
-        } else if(binExp.operator == '/'){
-            return degree(binExp.left) - degree(binExp.right);
-        } else if(binExp.operator == '+'){
-            return Math.max(degree(binExp.left), degree(binExp.right));
-        } else if(binExp.operator == '-'){
-            return Math.max(degree(binExp.left), degree(binExp.right));
+        else {
+            // (A/B) + F = (A + B*F) / B
+            const bf = this.denominator.multiply(other);
+            const newNumerator = this.numerator.add(bf);
+            return new RationalFunction(newNumerator, this.denominator);
         }
-    } else if(sequence.type == 'FunctionCall'){
-        // sqrt(n) has degree 0.5; sin/cos are bounded
-        const func = sequence as FunctionCall;
-        if(func.name === 'sqrt'){
-            return 0.5 * degree(func.argument);
-        }
-        // sin/cos don't affect degree for convergence purposes
-        if(func.name === 'sin' || func.name === 'cos'){
-            return degree(func.argument);
-        }
-        if(func.name === 'exp'){
-            // If argument grows negatively without bound (e.g. -n), exp tends to 0
-            const isNegativeUnbounded = (e: Expression): boolean => {
-                if(e.type === 'UnaryExpression'){
-                    const u = e as UnaryExpression;
-                    if(u.operator === '-'){
-                        return growsWithoutBound(u.argument);
-                    }
-                    if(u.operator === '+'){
-                        return isNegativeUnbounded(u.argument);
-                    }
-                }
-                return false;
-            };
-            if(isNegativeUnbounded(func.argument)){
-                return 0;
-            }
-            // If argument grows positively without bound, exp dominates any polynomial
-            if(growsWithoutBound(func.argument)){
-                return Number.POSITIVE_INFINITY;
-            }
-            // Otherwise argument is bounded -> exp is bounded (degree 0)
-            return 0;
-        }
-        return degree(func.argument);
-    } else if(sequence.type == 'Identifier'){
-        return 1;
-    } else if(sequence.type == 'NumericLiteral'){
-        return 0;
     }
-    return 0;
+    multiply(other: BaseFunction): BaseFunction {
+        // (A/B) * (C/D) = (AC) / (BD)
+        if(other instanceof RationalFunction){
+            const ac = this.numerator.multiply(other.numerator);
+            const bd = this.denominator.multiply(other.denominator);
+            return new RationalFunction(ac, bd);
+        } else if (other instanceof Polynomial) {
+            // (A/B) * C = (AC) / B
+            const ac = this.numerator.multiply(other);
+            return new RationalFunction(ac, this.denominator);
+        }
+        else {
+            // (A/B) * F = (A*F) / B
+            const af = this.numerator.multiply(other);
+            return new RationalFunction(af, this.denominator);
+        }
+    }
+    divide(other: BaseFunction): BaseFunction {
+        // (A/B) / X = (A) / (B*X)
+        return new RationalFunction(this.numerator, this.denominator.multiply(other));
+    }
 }
 
-export function derive(sequence: Expression):Expression{
-    if(sequence.type == 'UnaryExpression'){
-        const u = sequence as UnaryExpression;
-        const d = derive(u.argument);
-        if(u.operator === '-'){
-            if(d.type === 'NumericLiteral'){
-                return { type: 'NumericLiteral', value: - (d as NumericLiteral).value } as NumericLiteral;
-            }
-            return { type: 'UnaryExpression', operator: '-', argument: d } as UnaryExpression;
-        }
-        return d;
+// Composite function classes for operations
+class AddFunction extends BaseFunction {
+    left: BaseFunction;
+    right: BaseFunction;
+    constructor(left: BaseFunction, right: BaseFunction) {
+        super();
+        this.left = left;
+        this.right = right;
     }
-    if(sequence.type == 'PowerExpression'){
-        const powExp = sequence as PowerExpression;
-        // Power rule: (u^n)' = n * u^(n-1) * u' for constant n
-        if(powExp.exponent.type == 'NumericLiteral'){
-            const n = (powExp.exponent as NumericLiteral).value;
-            return {
-                type: 'BinaryExpression',
-                operator: '*',
-                left: {
-                    type: 'BinaryExpression',
-                    operator: '*',
-                    left: { type: 'NumericLiteral', value: n } as NumericLiteral,
-                    right: {
-                        type: 'PowerExpression',
-                        base: powExp.base,
-                        exponent: { type: 'NumericLiteral', value: n - 1 } as NumericLiteral
-                    } as PowerExpression
-                },
-                right: derive(powExp.base)
-            } as BinaryExpression;
-        }
-        // General case: (u^v)' = u^v * (v' * ln(u) + v * u'/u)
-        // For simplicity, we'll handle this as a complex derivative
-        return powExp; // Placeholder
-    } else if(sequence.type == 'BinaryExpression'){
-        const binExp = sequence as BinaryExpression;
-        if(binExp.operator == '*'){
-            // Product rule: (u*v)' = u'*v + u*v'
-            return {
-                type: 'BinaryExpression',
-                operator: '+',
-                left: {
-                    type: 'BinaryExpression',
-                    operator: '*',
-                    left: derive(binExp.left),
-                    right: binExp.right
-                },
-                right: {
-                    type: 'BinaryExpression',
-                    operator: '*',
-                    left: binExp.left,
-                    right: derive(binExp.right)
-                }
-            } as BinaryExpression;
-        } else if(binExp.operator == '/'){
-            // Quotient rule: (u/v)' = (u'*v - u*v')/v^2
-            return {
-                type: 'BinaryExpression',
-                operator: '/',
-                left: {
-                    type: 'BinaryExpression',
-                    operator: '-',
-                    left: {
-                        type: 'BinaryExpression',
-                        operator: '*',
-                        left: derive(binExp.left),
-                        right: binExp.right
-                    },
-                    right: {
-                        type: 'BinaryExpression',
-                        operator: '*',
-                        left: binExp.left,
-                        right: derive(binExp.right)
-                    }
-                },
-                right: {
-                    type: 'BinaryExpression',
-                    operator: '*',
-                    left: binExp.right,
-                    right: binExp.right
-                }
-            } as BinaryExpression;
-        } else if(binExp.operator == '+'){
-            return {
-                type: 'BinaryExpression',
-                operator: '+',
-                left: derive(binExp.left),
-                right: derive(binExp.right)
-            } as BinaryExpression;
-        } else if(binExp.operator == '-'){
-            return {
-                type: 'BinaryExpression',
-                operator: '-',
-                left: derive(binExp.left),
-                right: derive(binExp.right)
-            } as BinaryExpression;
-        }
-    } else if(sequence.type == 'Identifier'){
-        return {
-            type: 'NumericLiteral',
-            value: 1
-        } as NumericLiteral;
-    } else if(sequence.type == 'NumericLiteral'){
-        return {
-            type: 'NumericLiteral',
-            value: 0
-        } as NumericLiteral;
-    } else if(sequence.type == 'FunctionCall'){
-        const func = sequence as FunctionCall;
-        const argDeriv = derive(func.argument);
-        if(func.name === 'sin'){
-            // d/dx sin(u) = cos(u) * u'
-            return {
-                type: 'BinaryExpression',
-                operator: '*',
-                left: { type: 'FunctionCall', name: 'cos', argument: func.argument } as FunctionCall,
-                right: argDeriv
-            } as BinaryExpression;
-        } else if(func.name === 'cos'){
-            // d/dx cos(u) = -sin(u) * u'
-            return {
-                type: 'BinaryExpression',
-                operator: '*',
-                left: {
-                    type: 'UnaryExpression',
-                    operator: '-',
-                    argument: { type: 'FunctionCall', name: 'sin', argument: func.argument } as FunctionCall
-                } as UnaryExpression,
-                right: argDeriv
-            } as BinaryExpression;
-        } else if(func.name === 'sqrt'){
-            // d/dx sqrt(u) = 1/(2*sqrt(u)) * u'
-            return {
-                type: 'BinaryExpression',
-                operator: '*',
-                left: {
-                    type: 'BinaryExpression',
-                    operator: '/',
-                    left: { type: 'NumericLiteral', value: 1 } as NumericLiteral,
-                    right: {
-                        type: 'BinaryExpression',
-                        operator: '*',
-                        left: { type: 'NumericLiteral', value: 2 } as NumericLiteral,
-                        right: { type: 'FunctionCall', name: 'sqrt', argument: func.argument } as FunctionCall
-                    } as BinaryExpression
-                } as BinaryExpression,
-                right: argDeriv
-            } as BinaryExpression;
-        } else if(func.name === 'exp'){
-            // d/dx exp(u) = exp(u) * u'
-            return {
-                type: 'BinaryExpression',
-                operator: '*',
-                left: { type: 'FunctionCall', name: 'exp', argument: func.argument } as FunctionCall,
-                right: argDeriv
-            } as BinaryExpression;
-        }
-        return func;
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
     }
-    return sequence;
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
 }
 
-export function equals(expr1: Expression, expr2: Expression):boolean{
-    if(expr1.type != expr2.type){
-        return false;
+class MultiplyFunction extends BaseFunction {
+    left: BaseFunction;
+    right: BaseFunction;
+    constructor(left: BaseFunction, right: BaseFunction) {
+        super();
+        this.left = left;
+        this.right = right;
     }
-    if(expr1.type == 'NumericLiteral'){
-        return (expr1 as NumericLiteral).value == (expr2 as NumericLiteral).value;
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
     }
-    if(expr1.type == 'Identifier'){
-        return true;
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
     }
-    if(expr1.type == 'UnaryExpression'){
-        const u1 = expr1 as UnaryExpression;
-        const u2 = expr2 as UnaryExpression;
-        return u1.operator === u2.operator && equals(u1.argument, u2.argument);
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
     }
-    if(expr1.type == 'PowerExpression'){
-        const pow1 = expr1 as PowerExpression;
-        const pow2 = expr2 as PowerExpression;
-        return equals(pow1.base, pow2.base) && equals(pow1.exponent, pow2.exponent);
+}
+
+class DivideFunction extends BaseFunction {
+    numerator: BaseFunction;
+    denominator: BaseFunction;
+    constructor(numerator: BaseFunction, denominator: BaseFunction) {
+        super();
+        this.numerator = numerator;
+        this.denominator = denominator;
     }
-    if(expr1.type == 'BinaryExpression'){
-        const bin1 = expr1 as BinaryExpression;
-        const bin2 = expr2 as BinaryExpression;
-        return bin1.operator == bin2.operator && equals(bin1.left, bin2.left) && equals(bin1.right, bin2.right);
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
     }
-    if(expr1.type == 'FunctionCall'){
-        const func1 = expr1 as FunctionCall;
-        const func2 = expr2 as FunctionCall;
-        return func1.name === func2.name && equals(func1.argument, func2.argument);
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
     }
-    return false;
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+// Transcendental function classes
+class SinFunction extends BaseFunction {
+    argument: BaseFunction;
+    constructor(argument: BaseFunction) {
+        super();
+        this.argument = argument;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+class CosFunction extends BaseFunction {
+    argument: BaseFunction;
+    constructor(argument: BaseFunction) {
+        super();
+        this.argument = argument;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+class TanFunction extends BaseFunction {
+    argument: BaseFunction;
+    constructor(argument: BaseFunction) {
+        super();
+        this.argument = argument;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+class LogFunction extends BaseFunction {
+    argument: BaseFunction;
+    base: number; // logarithm base (default 10)
+    constructor(argument: BaseFunction, base: number = 10) {
+        super();
+        this.argument = argument;
+        this.base = base;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+class LnFunction extends BaseFunction {
+    argument: BaseFunction;
+    constructor(argument: BaseFunction) {
+        super();
+        this.argument = argument;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+class SqrtFunction extends BaseFunction {
+    argument: BaseFunction;
+    constructor(argument: BaseFunction) {
+        super();
+        this.argument = argument;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
+}
+
+class EExpFunction extends BaseFunction {
+    argument: BaseFunction;
+    constructor(argument: BaseFunction) {
+        super();
+        this.argument = argument;
+    }
+    add(other: BaseFunction): BaseFunction {
+        return new AddFunction(this, other);
+    }
+    multiply(other: BaseFunction): BaseFunction {
+        return new MultiplyFunction(this, other);
+    }
+    divide(other: BaseFunction): BaseFunction {
+        return new DivideFunction(this, other);
+    }
 }
 
 
-// Detect whether an expression stays bounded for large n (coarse, sufficient for trig division cases)
-function isBounded(expr: Expression): boolean {
-    if (expr.type === 'NumericLiteral') return true;
-    if (expr.type === 'UnaryExpression') {
-        return isBounded((expr as UnaryExpression).argument);
-    }
-    if (expr.type === 'FunctionCall') {
-        const func = expr as FunctionCall;
-        // sin and cos are globally bounded
-        if (func.name === 'sin' || func.name === 'cos') return true;
-        return false;
-    }
-    if (expr.type === 'BinaryExpression') {
-        const bin = expr as BinaryExpression;
-        if (bin.operator === '+' || bin.operator === '-') {
-            return isBounded(bin.left) && isBounded(bin.right);
-        }
-        if (bin.operator === '*') {
-            return isBounded(bin.left) && isBounded(bin.right);
-        }
-        if (bin.operator === '/') {
-            // Bounded numerator over growing denominator remains bounded (tends to 0)
-            if (isBounded(bin.left) && growsWithoutBound(bin.right)) return true;
-            return isBounded(bin.left) && isBounded(bin.right);
-        }
-    }
-    // Default fallback
-    return false;
+interface ConvergenceResult {
+    converges: boolean;
+    limit?: number;
+    divergeTo?: number; // +Infinity or -Infinity
+    divergenceKind?: DivergenceKind;
 }
 
-// Rough check if an expression's magnitude grows without bound as n→∞ (polynomial-like)
-function growsWithoutBound(expr: Expression): boolean {
-    if (expr.type === 'Identifier') return true;
-    if (expr.type === 'PowerExpression') {
-        return degree(expr) > 0;
-    }
-    if (expr.type === 'UnaryExpression') {
-        return growsWithoutBound((expr as UnaryExpression).argument);
-    }
-    if (expr.type === 'BinaryExpression') {
-        const bin = expr as BinaryExpression;
-        if (bin.operator === '+' || bin.operator === '-') {
-            return growsWithoutBound(bin.left) || growsWithoutBound(bin.right);
-        }
-        if (bin.operator === '*') {
-            // If either factor grows without bound and the other is not zero-only, treat as unbounded
-            return (growsWithoutBound(bin.left) && !isNumericZero(bin.right)) || (growsWithoutBound(bin.right) && !isNumericZero(bin.left));
-        }
-        if (bin.operator === '/') {
-            // Growing numerator over bounded denominator -> grows; bounded over growing -> does not grow
-            if (growsWithoutBound(bin.left) && isBounded(bin.right)) return true;
-            if (isBounded(bin.left) && growsWithoutBound(bin.right)) return false;
-        }
-    }
-    return false;
-}
-
-function isNumericZero(expr: Expression): boolean {
-    return expr.type === 'NumericLiteral' && (expr as NumericLiteral).value === 0;
+enum DivergenceKind {
+    Exponential,
+    Polynomial,
 }
 
 
-
-export function converge(sequence: Expression, maxIterations: number = 10000):number|boolean{
-    sequence = simplify(sequence);
-
-    // Handle sin/cos via the sandwich (squeeze) lemma
-    if(sequence.type === 'FunctionCall'){
-        const func = sequence as FunctionCall;
-        const argLimit = converge(func.argument, maxIterations);
-        if(func.name == "exp" && func.argument.type == 'UnaryExpression'){
-            const u = func.argument as UnaryExpression;
-            if(u.operator == '-' && growsWithoutBound(u.argument)){
-                return 0;
-            }
-        }
-        if(typeof argLimit !== 'number'){
-            return false;
-        }
-
-        const absArgLimit = Math.abs(argLimit);
-
-        if(func.name === 'sin'){
-            // For all x: -|x| <= sin(x) <= |x|; if |x| -> 0, both bounds -> 0.
-            if(absArgLimit === 0){
-                return 0;
-            }
-            return false;
-        }
-
-        if(func.name === 'cos'){
-            // For |x| small: 1 - x^2/2 <= cos(x) <= 1; if x -> 0, both bounds -> 1.
-            if(absArgLimit === 0){
-                return 1;
-            }
-            return false;
-        }
-
-        if(func.name === 'sqrt'){
-            // sqrt is continuous, so if argument converges to L ≥ 0, sqrt(L) converges to sqrt(L)
-            if(argLimit >= 0){
-                return Math.sqrt(argLimit);
-            }
-            return false; // negative argument
-        }
-
-        if(func.name === 'exp'){
-            // exp is continuous over R: if argument converges to L, exp(L)
-            return Math.exp(argLimit);
-        }
-
-        // Unknown function
-        return false;
-    }
-    if(sequence.type == 'UnaryExpression'){
-        const u = sequence as UnaryExpression;
-        const val = converge(u.argument, maxIterations);
-        if(typeof val === 'number'){
-            return u.operator === '-' ? -val : val;
-        }
-        return false;
-    }
-    if(sequence.type == 'BinaryExpression'){
-        const binExp = sequence as BinaryExpression;
-
+export function parseFunction(expr: Expression): BaseFunction {
+    if(expr.type == 'BinaryExpression'){
+        let binExp = expr as BinaryExpression;
         if(binExp.operator == '/'){
-            // If numerator is bounded (e.g., sin, cos) and denominator grows without bound, limit is 0 by squeeze
-            if (isBounded(binExp.left) && growsWithoutBound(binExp.right)) {
-                return 0;
-            }
-
-            if(growsWithoutBound(binExp.left) && isBounded(binExp.right)){
-                return false;
-            }
-
-       
-            const leftDeg = degree(binExp.left);
-            const rightDeg = degree(binExp.right);
+            let numerator = parseFunction(binExp.left);
+            let denominator = parseFunction(binExp.right);
+            return numerator.divide(denominator);
             
-            // Handle constant / polynomial
-            if(leftDeg == 0 && rightDeg > 0){
-                // Constant over polynomial → converges to 0
-                return 0;
-            }
-            
-            // Handle polynomial / polynomial
-            if(leftDeg > 0 && rightDeg > 0){
-                if(leftDeg < rightDeg){
-                    // Numerator degree < denominator degree → converges to 0
-                    return 0;
-                }
-                if(leftDeg > rightDeg){
-                    // Numerator degree > denominator degree → diverges
-                    return false;
-                }
-                // leftDeg == rightDeg → use L'Hôpital's rule
-                let leftDerv = binExp.left;
-                let rightDerv = binExp.right;
-                let iterations = 0;
-            
-                while(leftDerv.type != 'NumericLiteral' && iterations < maxIterations){
-                    leftDerv = derive(leftDerv);
-                    leftDerv = simplify(leftDerv);
-                    iterations++;
-                }
-                iterations = 0;
-                while(rightDerv.type != 'NumericLiteral' && iterations < maxIterations){
-                    rightDerv = derive(rightDerv);
-                    rightDerv = simplify(rightDerv);
-                    iterations++;
-                }
-                
-                if (leftDerv.type !== 'NumericLiteral' || rightDerv.type !== 'NumericLiteral') {
-                    return false;
-                }
-                
-                const leftNum = (leftDerv as NumericLiteral).value;
-                const rightNum = (rightDerv as NumericLiteral).value;
-                if(rightNum == 0){
-                    throw new Error("Division by zero in convergence");
-                }
-                return leftNum / rightNum;
-            }
-            
-        }
-
-        if(binExp.operator == '*'){
-            const leftConv = converge(binExp.left, maxIterations);
-            const rightConv = converge(binExp.right, maxIterations);
-
-            if(typeof leftConv == 'number' && typeof rightConv == 'number'){
-                return leftConv * rightConv;
-            }
-            return false;
         }
         if(binExp.operator == '+'){
-            const leftConv = converge(binExp.left, maxIterations);
-            const rightConv = converge(binExp.right, maxIterations);
-            if(typeof leftConv == 'number' && typeof rightConv == 'number'){
-                return leftConv + rightConv;
-            }
-            return false;
+            let left = parseFunction(binExp.left);
+            let right = parseFunction(binExp.right);
+            return left.add(right)
         }
         if(binExp.operator == '-'){
-            if(equals(binExp.left, binExp.right)){
+            let left = parseFunction(binExp.left);
+            let right = parseFunction(binExp.right);
+            return left.add(right.multiply(new Polynomial([-1])));
+        }
+        if(binExp.operator == '*'){
+            let left = parseFunction(binExp.left);
+            let right = parseFunction(binExp.right);
+            return left.multiply(right);
+        }
+    }
+    if(expr.type == 'UnaryExpression'){
+        const u = expr as UnaryExpression;
+        const argFunc = parseFunction(u.argument);
+        if(u.operator == '-'){
+            return argFunc.multiply(new Polynomial([-1]));
+        }
+        return argFunc;
+    }
+    if(expr.type == 'PowerExpression'){
+        const powExp = expr as PowerExpression;
+        const baseFunc = parseFunction(powExp.base);
+        if(powExp.exponent.type == 'NumericLiteral'){
+            const expValue = (powExp.exponent as NumericLiteral).value;
+            let result: BaseFunction = new Polynomial([1]);
+            if(expValue >= 0){
+                for(let i=0; i<expValue; i++){
+                    result = result.multiply(baseFunc);
+                }
+                return result;
+            } else {
+                // Handle negative exponents: n^-k = 1 / n^k
+                for(let i=0; i<Math.abs(expValue); i++){
+                    result = result.multiply(baseFunc);
+                }
+                return new Polynomial([1]).divide(result);
+            }
+        }
+        throw new Error("Unsupported exponent type in power expression for function parsing");
+    }
+    if(expr.type == 'NumericLiteral'){
+        const numLit = expr as NumericLiteral;
+        return new Polynomial([numLit.value]);
+    }
+    if(expr.type == 'Identifier'){
+        // 'n' corresponds to x^1
+        return new Polynomial([0, 1]);
+    }
+    if(expr.type == 'FunctionCall'){
+        const funcCall = expr as FunctionCall;
+        const argument = parseFunction(funcCall.argument);
+        switch(funcCall.name.toLowerCase()){
+            case 'sin':
+                return new SinFunction(argument);
+            case 'cos':
+                return new CosFunction(argument);
+            case 'tan':
+                return new TanFunction(argument);
+            case 'log':
+                return new LogFunction(argument, 10);
+            case 'log10':
+                return new LogFunction(argument, 10);
+            case 'log2':
+                return new LogFunction(argument, 2);
+            case 'ln':
+            case 'log_e':
+                return new LnFunction(argument);
+            case 'sqrt':
+            case 'sqrt2':
+                return new SqrtFunction(argument);
+            case 'exp':
+            case 'e^':
+                return new EExpFunction(argument);
+            case 'abs':
+                // For now, treat absolute value as identity (may need special handling)
+                return argument;
+            default:
+                throw new Error(`Unsupported function: ${funcCall.name}`);
+        }
+    }
+    throw new Error("Unsupported expression for function parsing");
+}
+
+export function converge(func: BaseFunction): number | false {
+    if(func instanceof RationalFunction){
+        if(func.numerator instanceof Polynomial && func.denominator instanceof Polynomial){
+            const degreeNum = (func.numerator as Polynomial).coefficients.length - 1;
+            const degreeDen = (func.denominator as Polynomial).coefficients.length - 1;
+            if(degreeNum < degreeDen){
                 return 0;
+            } else if (degreeNum == degreeDen){
+                const coeffNum = (func.numerator as Polynomial).coefficients[degreeNum];
+                const coeffDen = (func.denominator as Polynomial).coefficients[degreeDen];
+                return coeffNum / coeffDen;
+            } else {
+                return false;
             }
-            const leftConv = converge(binExp.left, maxIterations);
-            const rightConv = converge(binExp.right, maxIterations);
-            if(typeof leftConv == 'number' && typeof rightConv == 'number'){
-                return leftConv - rightConv;
-            }
+        }
+        if(func.numerator instanceof RationalFunction || func.denominator instanceof RationalFunction){
+            return converge(func.numerator.divide(func.denominator));
+        }
+        return false;
+    }
+    if(func instanceof Polynomial){
+        const degree = func.coefficients.length - 1;
+        if(degree <= 0){
+            return func.coefficients[0]; 
+        }
+        if(degree > 0){
+            return Infinity * Math.sign(func.coefficients[degree]);
+        }
+    }
+    if(func instanceof EExpFunction || func instanceof LogFunction || func instanceof LnFunction || func instanceof SinFunction || func instanceof CosFunction || func instanceof TanFunction){
+        // these are all continous functions
+        const argConverge = converge(func.argument);
+        if(argConverge === false){
             return false;
         }
-    }
-    if(sequence.type == 'NumericLiteral'){
-        return (sequence as NumericLiteral).value;
-    }
-    if(sequence.type == 'Identifier'){
-        return false;
-    }
-    if(sequence.type == 'PowerExpression'){
-        if(degree(sequence) <= 0){
-            if(degree(sequence) < 0){
-                return 0;
-            }
-            return 1;
+        if(func instanceof EExpFunction){
+            return Math.E ** (argConverge as number);
         }
-        return false;
+        if(func instanceof LogFunction){
+            // use ln formula change of base
+            return Math.log(argConverge as number) / Math.log((func as LogFunction).base);
+        }
+        if(func instanceof LnFunction){
+            return Math.log(argConverge as number);
+        }
+        if(func instanceof SinFunction){
+            return Math.sin(argConverge as number);
+        }
+        if(func instanceof CosFunction){
+            return Math.cos(argConverge as number);
+        }
+        if(func instanceof TanFunction){
+            throw new Error("Convergence of tangent function not supported");
+        }
+    }
+    if(func instanceof AddFunction){
+        let leftConverge = converge(func.left);
+        let rightConverge = converge(func.right);
+        if(leftConverge === false || rightConverge === false){
+            return false;
+        }
+        return (leftConverge as number) + (rightConverge as number);
+    }
+    if(func instanceof MultiplyFunction){
+        let leftConverge = converge(func.left);
+        let rightConverge = converge(func.right);
+        if(leftConverge === false || rightConverge === false){
+            return false;
+        }
+        return (leftConverge as number) * (rightConverge as number);
+    }
+    if(func instanceof DivideFunction){
+        let numeratorConverge = converge(func.numerator);
+        let denominatorConverge = converge(func.denominator);
+        if(numeratorConverge === false || denominatorConverge === false){
+            return false;
+        }
+        return (numeratorConverge as number) / (denominatorConverge as number);
     }
     return false;
 }
+
