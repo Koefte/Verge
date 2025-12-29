@@ -212,6 +212,279 @@ const testCases: TestCase[] = [
         expression: "exp(-n)",
         expected: 0,
         tolerance: 0.0001
+    },
+    
+    // Constant base exponentials (b^n)
+    {
+        name: "b^n: 2^n diverges",
+        expression: "2^n",
+        expected: false
+    },
+    {
+        name: "b^n: 3^n diverges",
+        expression: "3^n",
+        expected: false
+    },
+    {
+        name: "b^n: 0.5^n -> 0",
+        expression: "0.5^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n: (1/2)^n -> 0",
+        expression: "(1/2)^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n: (1/3)^n -> 0",
+        expression: "(1/3)^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n: 1^n -> 1",
+        expression: "1^n",
+        expected: 1,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n: 2^(n+1) diverges",
+        expression: "2^(n+1)",
+        expected: false
+    },
+    {
+        name: "b^n: 0.5^(2*n) -> 0",
+        expression: "0.5^(2*n)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n ratio: 2^n / 3^n -> 0",
+        expression: "2^n / 3^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n: 10^(-n) -> 0",
+        expression: "10^(-n)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "b^n: 0.1^n -> 0",
+        expression: "0.1^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    
+    // Logarithms
+    {
+        name: "Log: ln(n) diverges",
+        expression: "ln(n)",
+        expected: false
+    },
+    {
+        name: "Log: ln(n)/n -> 0",
+        expression: "ln(n)/n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Log: n/ln(n) diverges",
+        expression: "n/ln(n)",
+        expected: false
+    },
+    {
+        name: "Log: ln(1/n) diverges",
+        expression: "ln(1/n)",
+        expected: false
+    },
+    {
+        name: "Log: ln(n+1)/ln(n) -> 1",
+        expression: "ln(n+1)/ln(n)",
+        expected: 1,
+        tolerance: 0.01
+    },
+    
+    // Square root
+    {
+        name: "Sqrt: sqrt(n) diverges",
+        expression: "sqrt(n)",
+        expected: false
+    },
+    {
+        name: "Sqrt: sqrt(n)/n -> 0",
+        expression: "sqrt(n)/n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Sqrt: n/sqrt(n) diverges",
+        expression: "n/sqrt(n)",
+        expected: false
+    },
+    {
+        name: "Sqrt: sqrt(1/n) -> 0",
+        expression: "sqrt(1/n)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Sqrt: 1/sqrt(n) -> 0",
+        expression: "1/sqrt(n)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    
+    // Mixed growth rates
+    {
+        name: "Growth: n^2/2^n -> 0 (exp > poly)",
+        expression: "n^2/2^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Growth: 2^n/n^2 diverges (exp > poly)",
+        expression: "2^n/n^2",
+        expected: false
+    },
+    {
+        name: "Growth: ln(n)/n -> 0 (log < poly)",
+        expression: "ln(n)/n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Growth: n/ln(n) diverges (poly > log)",
+        expression: "n/ln(n)",
+        expected: false
+    },
+    {
+        name: "Growth: ln(n)/2^n -> 0 (log < exp)",
+        expression: "ln(n)/2^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Growth: 2^n/ln(n) diverges (exp > log)",
+        expression: "2^n/ln(n)",
+        expected: false
+    },
+    
+    // Complex rational with exponentials
+    {
+        name: "Complex: (2^n + n)/(3^n + 1) -> 0",
+        expression: "(2^n + n)/(3^n + 1)",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Complex: (3^n + n)/(2^n + 1) diverges",
+        expression: "(3^n + n)/(2^n + 1)",
+        expected: false
+    },
+    {
+        name: "Complex: (n^2 + 3*n + 1)/(2*n^2 + n) -> 0.5",
+        expression: "(n^2 + 3*n + 1)/(2*n^2 + n)",
+        expected: 0.5,
+        tolerance: 0.001
+    },
+    {
+        name: "Complex: (5*n^3 - n)/(n^3 + 2*n^2) -> 5",
+        expression: "(5*n^3 - n)/(n^3 + 2*n^2)",
+        expected: 5,
+        tolerance: 0.001
+    },
+    
+    // Edge cases
+    {
+        name: "Edge: constant 5",
+        expression: "5",
+        expected: 5
+    },
+    {
+        name: "Edge: constant 0",
+        expression: "0",
+        expected: 0
+    },
+    {
+        name: "Edge: -3",
+        expression: "-3",
+        expected: -3
+    },
+    {
+        name: "Edge: n diverges",
+        expression: "n",
+        expected: false
+    },
+    {
+        name: "Edge: -n diverges",
+        expression: "-n",
+        expected: false
+    },
+    {
+        name: "Edge: n^2 diverges",
+        expression: "n^2",
+        expected: false
+    },
+    {
+        name: "Edge: n^3 diverges",
+        expression: "n^3",
+        expected: false
+    },
+    
+    // Polynomial arithmetic
+    {
+        name: "Poly: (n+1)*(n+2)/(n^2) -> 1",
+        expression: "(n+1)*(n+2)/(n^2)",
+        expected: 1,
+        tolerance: 0.01
+    },
+    {
+        name: "Poly: n*(n+1)/(n^2+n) -> 1",
+        expression: "n*(n+1)/(n^2+n)",
+        expected: 1,
+        tolerance: 0.001
+    },
+    
+    // Exponential with polynomial coefficients
+    {
+        name: "Exp-poly: n*2^n diverges",
+        expression: "n*2^n",
+        expected: false
+    },
+    {
+        name: "Exp-poly: n*0.5^n -> 0",
+        expression: "n*0.5^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Exp-poly: (2*n + 1)*0.5^n -> 0",
+        expression: "(2*n + 1)*0.5^n",
+        expected: 0,
+        tolerance: 0.0001
+    },
+    {
+        name: "Exp-poly: 2^n/(n^2 + 1) diverges",
+        expression: "2^n/(n^2 + 1)",
+        expected: false
+    },
+    
+    // L'Hopital type cases (indeterminate forms)
+    {
+        name: "L'H: (n^2+n)/(n^2+2*n) -> 1",
+        expression: "(n^2+n)/(n^2+2*n)",
+        expected: 1,
+        tolerance: 0.001
+    },
+    {
+        name: "L'H: (2*n^2-n)/(n^2+3) -> 2",
+        expression: "(2*n^2-n)/(n^2+3)",
+        expected: 2,
+        tolerance: 0.001
     }
 ];
 

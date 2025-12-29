@@ -1,9 +1,9 @@
 import { Tokenizer } from './tokenizer.js';
 import { Expression, Parser, BinaryExpression, NumericLiteral, PowerExpression, UnaryExpression, FunctionCall } from './parser.js';
-import { converge } from './converge.js';
+import { converge, parseFunction, ConvergenceResult } from './converge.js';
 
 // Re-export for use in frontend
-export { converge };
+export { converge, parseFunction, ConvergenceResult };
 
 // Declare katex for browser
 declare const katex: any;

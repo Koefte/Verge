@@ -1,4 +1,4 @@
-import { parseExpression, simplify, converge, expressionToLatex } from '../dist/web.js';
+import { parseExpression, converge, expressionToLatex, parseFunction } from '../dist/web.js';
 
 document.getElementById('checkBtn').addEventListener('click', () => {
     const input = document.getElementById('expression').value;
@@ -7,7 +7,7 @@ document.getElementById('checkBtn').addEventListener('click', () => {
     const stepsSection = document.getElementById('stepsSection');
     
     try {
-        // Parse the expression
+        // Parse the expression to AST
         const ast = parseExpression(input);
         
         // Display the parsed expression using KaTeX
@@ -17,19 +17,32 @@ document.getElementById('checkBtn').addEventListener('click', () => {
             displayMode: true
         });
         
-        // Simplify and check convergence
-        const simplified = simplify(ast);
-        const result = converge(simplified);
+        // Convert AST to BaseFunction and check convergence
+        const func = parseFunction(ast);
+        const result = converge(func);
         
-        // Display result
+        // Display result based on ConvergenceResult class
         resultEl.className = 'result-box';
-        if (result === false) {
-            resultEl.className += ' diverges';
-            resultEl.innerHTML = '❌ The series diverges';
-        } else {
+        if (result.converges) {
             resultEl.className += ' converges';
-            const limitLatex = typeof result === 'number' ? result.toString() : 'L';
-            resultEl.innerHTML = `✅ The series converges to: ${result}`;
+            if (result.limit !== undefined) {
+                resultEl.innerHTML = `✅ The series converges to: ${result.limit}`;
+            } else {
+                resultEl.innerHTML = `✅ The series converges`;
+            }
+        } else {
+            resultEl.className += ' diverges';
+            if (result.divergeTo !== undefined) {
+                if (result.divergeTo === Infinity) {
+                    resultEl.innerHTML = '❌ The series diverges to +∞';
+                } else if (result.divergeTo === -Infinity) {
+                    resultEl.innerHTML = '❌ The series diverges to -∞';
+                } else {
+                    resultEl.innerHTML = `❌ The series diverges to ${result.divergeTo}`;
+                }
+            } else {
+                resultEl.innerHTML = '❌ The series diverges (indeterminate)';
+            }
         }
         
         // Hide steps section for now
