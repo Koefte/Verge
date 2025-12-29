@@ -8,7 +8,7 @@ abstract class BaseFunction {
     abstract divide(other: BaseFunction): BaseFunction;
 }
 
-class Polynomial extends BaseFunction {
+export class Polynomial extends BaseFunction {
     coefficients: number[]; // coefficients[i] corresponds to x^i
     constructor(coefficients: number[]) {
         super()
@@ -70,6 +70,26 @@ class Polynomial extends BaseFunction {
         else {
             return new DivideFunction(this, other);
         }
+    }
+
+    polynomDivision(divisor: Polynomial): { quotient: Polynomial; remainder: Polynomial } {
+        let dividendCoeffs = [...this.coefficients];
+        const divisorDegree = divisor.coefficients.length - 1;
+        const divisorLeadingCoeff = divisor.coefficients[divisorDegree];
+        const quotientCoeffs = new Array(Math.max(0, dividendCoeffs.length - divisorDegree)).fill(0);
+        while (dividendCoeffs.length - 1 >= divisorDegree) {
+            const degreeDiff = dividendCoeffs.length - 1 - divisorDegree;
+            const leadingCoeff = dividendCoeffs[dividendCoeffs.length - 1] / divisorLeadingCoeff;
+            quotientCoeffs[degreeDiff] = leadingCoeff;
+            for (let i = 0; i <= divisorDegree; i++) {
+                dividendCoeffs[degreeDiff + i] -= leadingCoeff * divisor.coefficients[i];
+            }
+            dividendCoeffs.pop(); // Remove the highest degree term
+        }
+        return {
+            quotient: new Polynomial(quotientCoeffs),
+            remainder: new Polynomial(dividendCoeffs)
+        };
     }
 }
 

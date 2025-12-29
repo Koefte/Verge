@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Polynomial Division</title>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+	<link rel="stylesheet" href="style.css">
+	<meta name="description" content="Enter a polynomial and see its parsed form rendered with KaTeX.">
+</head>
+<body>
+	<div class="container">
+		<h1>Polynomial Division</h1>
+
+		<div class="input-section">
+			<label for="dividend">Dividend p(n):</label>
+			<input type="text" id="dividend" placeholder="e.g., 3n^2 - 4n + 7" style="width:100%; padding:12px 16px; font-size:1.1em; border:2px solid #ddd; border-radius:6px; transition:border-color .3s; font-family:'Courier New', monospace;">
+
+			<label for="divisor" style="margin-top:15px; display:block;">Divisor d(n):</label>
+			<input type="text" id="divisor" placeholder="e.g., n - 2" style="width:100%; padding:12px 16px; font-size:1.1em; border:2px solid #ddd; border-radius:6px; transition:border-color .3s; font-family:'Courier New', monospace;">
+
+			<button id="checkBtn" type="button">Divide</button>
+		</div>
+
+		<div class="output-section">
+			<div class="expression-display">
+				<h3>Quotient q(n)</h3>
+				<div id="quotient" class="math-display"></div>
+			</div>
+			<div class="expression-display">
+				<h3>Remainder r(n)</h3>
+				<div id="remainder" class="math-display"></div>
+			</div>
+			<div class="expression-display">
+				<h3>Identity</h3>
+				<div id="identity" class="math-display"></div>
+			</div>
+		</div>
+	</div>
+
+	<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+	<script type="module">
+		import { parseExpression, parseFunction } from '../dist/web.js';
+
+		const dividendEl = document.getElementById('dividend');
+		const divisorEl = document.getElementById('divisor');
+		const btnEl = document.getElementById('checkBtn');
+		const quotientEl = document.getElementById('quotient');
+		const remainderEl = document.getElementById('remainder');
+		const identityEl = document.getElementById('identity');
+
+		function trimCoeffs(a) {
+			let c = a.slice();
+			while (c.length > 1 && Math.abs(c[c.length - 1]) === 0) c.pop();
+			return c;
+		}
+
+		function degree(a) {
+			const c = trimCoeffs(a);
+			return c.length - 1;
+		}
+
+		function polyDivide(dividend, divisor) {
+			const A = trimCoeffs(dividend.slice());
+			const B = trimCoeffs(divisor.slice());
+			const degA = degree(A);
+			const degB = degree(B);
+			if (degB < 0 || (B.length === 1 && B[0] === 0)) throw new Error('Divisor cannot be zero polynomial');
+			if (degA < degB) return { q: [0], r: A };
+			const q = new Array(degA - degB + 1).fill(0);
+			let r = A.slice();
+			while (degree(r) >= degB && !(r.length === 1 && r[0] === 0)) {
+				const dr = degree(r);
+				const leadR = r[dr];
+				const leadB = B[degB];
+				const k = dr - degB;
+				const coeff = leadR / leadB;
+				q[k] += coeff;
+				// subtract coeff * B shifted by k from r
+				for (let i = 0; i <= degB; i++) {
+					const idx = i + k;
+					r[idx] = (r[idx] || 0) - coeff * B[i];
+				}
+				r = trimCoeffs(r);
+			}
+			return { q: trimCoeffs(q), r: trimCoeffs(r) };
+		}
+
+		function coeffsToLatex(c) {
+			const coeffs = trimCoeffs(c);
+			if (coeffs.length === 0) return '0';
+			let parts = [];
+			for (let i = coeffs.length - 1; i >= 0; i--) {
+				const a = coeffs[i];
+				if (!a || Math.abs(a) === 0) continue;
+				const sign = a < 0 ? '-' : '+';
+				const absA = Math.abs(a);
+				let term = '';
+				if (i === 0) {
+					term = `${absA}`;
+				} else if (i === 1) {
+					term = `${absA === 1 ? '' : absA}n`;
+				} else {
+					term = `${absA === 1 ? '' : absA}n^{${i}}`;
+				}
+				parts.push({ sign, term });
+			}
+			if (parts.length === 0) return '0';
+			// Build string without leading '+'
+			let latex = parts[0].sign === '-' ? '-' : '';
+			latex += parts[0].term;
+			for (let j = 1; j < parts.length; j++) {
+				latex += ` ${parts[j].sign} ${parts[j].term}`;
+			}
+			return latex;
+		}
+
+		function doDivide() {
+			quotientEl.className = 'math-display';
+			remainderEl.className = 'math-display';
+			identityEl.className = 'math-display';
+			try {
+				const aAst = parseExpression(dividendEl.value || '');
+				const bAst = parseExpression(divisorEl.value || '');
+				const aFn = parseFunction(aAst);
+				const bFn = parseFunction(bAst);
+				if (!aFn || !Array.isArray(aFn.coefficients)) throw new Error('Dividend must be a polynomial in n');
+				if (!bFn || !Array.isArray(bFn.coefficients)) throw new Error('Divisor must be a polynomial in n');
+				const { q, r } = polyDivide(aFn.coefficients, bFn.coefficients);
+				const qLatex = coeffsToLatex(q);
+				const rLatex = coeffsToLatex(r);
+				katex.render(qLatex, quotientEl, { throwOnError: false, displayMode: true });
+				katex.render(rLatex, remainderEl, { throwOnError: false, displayMode: true });
+				const aLatex = coeffsToLatex(aFn.coefficients);
+				const bLatex = coeffsToLatex(bFn.coefficients);
+				const identity = `${aLatex} = (${qLatex})\\cdot(${bLatex}) ${rLatex === '0' ? '' : '+ (' + rLatex + ')'}`;
+				katex.render(identity, identityEl, { throwOnError: false, displayMode: true });
+			} catch (err) {
+				const msg = `Error: ${err?.message || err}`;
+				quotientEl.className = 'error';
+				remainderEl.className = 'error';
+				identityEl.className = 'error';
+				quotientEl.textContent = msg;
+				remainderEl.textContent = '';
+				identityEl.textContent = '';
+			}
+		}
+
+		btnEl.addEventListener('click', doDivide);
+		dividendEl.addEventListener('keypress', (e) => { if (e.key === 'Enter') btnEl.click(); });
+		divisorEl.addEventListener('keypress', (e) => { if (e.key === 'Enter') btnEl.click(); });
+	</script>
+</body>
+</html>
