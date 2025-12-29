@@ -25,7 +25,7 @@ const MIME_TYPES = {
 
 const server = createServer(async (req, res) => {
     try {
-        let filePath: string = req.url === '/' ? '/index.html' : (req.url || '/index.html');
+        let filePath: string = req.url === '/' ? '/verge.html' : (req.url || '/verge.html');
         
         // Remove query string
         filePath = filePath.split('?')[0];

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Function Grapher</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <link rel="stylesheet" href="style.css">
+    <meta name="description" content="Enter a function and plot it on a canvas.">
+</head>
+<body>
+    <div class="container">
+        <h1>Function Grapher</h1>
+
+        <div class="input-section">
+            <label for="expression">Enter function f(x):</label>
+            <input type="text" id="expression" placeholder="e.g., sin(x) + x^2">
+            <button id="checkBtn" type="button">Plot</button>
+        </div>
+
+        <div class="output-section">
+            <div class="expression-display">
+                <h3>Parsed Function</h3>
+                <div id="parsedExpr" class="math-display"></div>
+            </div>
+            <div class="expression-display">
+                <h3>Canvas</h3>
+                <canvas id="graphCanvas" width="900" height="450" style="width: 100%; display: block;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script type="module">
+        import { parseExpression, expressionToLatex, parseFunction ,getValue } from '../dist/web.js';
+
+        const inputEl = document.getElementById('expression');
+        const btnEl = document.getElementById('checkBtn');
+        const parsedEl = document.getElementById('parsedExpr');
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function renderParsed() {
+            const raw = inputEl.value || '';
+            try {
+                const ast = parseExpression(raw);
+                // Ensure we exercise converge.ts parsing logic
+                const _fn = parseFunction(ast);
+                const latex = expressionToLatex(ast);
+                katex.render(latex, parsedEl, { throwOnError: false, displayMode: true });
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Draw axes
+                ctx.strokeStyle = '#ccc';
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height / 2);
+                ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.moveTo(canvas.width / 2, 0);
+                ctx.lineTo(canvas.width / 2, canvas.height);
+                ctx.stroke();
+                // Plot function
+                ctx.strokeStyle = '#007bff';
+                for(let i = 0; i < canvas.width; i++) {
+                    const x = (i - canvas.width / 2) / 40; // Scale x
+                    const y = getValue(_fn, x);
+                    const j = canvas.height / 2 - y * 40; // Scale y
+                    if(i === 0) {
+                        ctx.moveTo(i, j);
+                    } else {
+                        ctx.lineTo(i, j);
+                    }
+                }
+                ctx.stroke();
+            } catch (err) {
+                parsedEl.className = 'math-display error';
+                parsedEl.textContent = `Error: ${err?.message || err}`;
+            }
+        }
+
+        btnEl.addEventListener('click', renderParsed);
+        inputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') btnEl.click();
+        });
+    </script>
+</body>
+</html>

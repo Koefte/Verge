@@ -506,6 +506,71 @@ export function parseFunction(expr: Expression): BaseFunction {
     throw new Error("Unsupported expression for function parsing");
 }
 
+export function getValue(func: BaseFunction, nValue: number): number {
+    if(func instanceof Polynomial){
+        let result = 0;
+        for(let i=0; i<func.coefficients.length; i++){
+            result += func.coefficients[i] * Math.pow(nValue, i);
+        }
+        return result;
+    }
+    if(func instanceof RationalFunction){
+        const numValue = getValue(func.numerator, nValue);
+        const denValue = getValue(func.denominator, nValue);
+        if(denValue === 0){
+            throw new Error("Division by zero in rational function evaluation");
+        }
+        return numValue / denValue;
+    }
+    if(func instanceof ConstantBaseExpFunction){
+        const exponentValue = getValue(func.exponent, nValue);
+        return Math.pow(func.base, exponentValue);
+    }
+    if(func instanceof SinFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.sin(argValue);
+    }
+    if(func instanceof CosFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.cos(argValue);
+    }
+    if(func instanceof TanFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.tan(argValue);
+    }
+    if(func instanceof LogFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.log(argValue) / Math.log(func.base);
+    }
+    if(func instanceof LnFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.log(argValue);
+    }
+    if(func instanceof SqrtFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.sqrt(argValue);
+    }
+    if(func instanceof EExpFunction){
+        const argValue = getValue(func.argument, nValue);
+        return Math.E ** argValue;
+    }
+    if(func instanceof AddFunction){
+        return getValue(func.left, nValue) + getValue(func.right, nValue);
+    }
+    if(func instanceof MultiplyFunction){
+        return getValue(func.left, nValue) * getValue(func.right, nValue);
+    }
+    if(func instanceof DivideFunction){
+        const numeratorValue = getValue(func.numerator, nValue);
+        const denominatorValue = getValue(func.denominator, nValue);
+        if(denominatorValue === 0){
+            throw new Error("Division by zero in divide function evaluation");
+        }
+        return numeratorValue / denominatorValue;
+    }
+    throw new Error("Unsupported function type for evaluation");
+}
+
 export function converge(func: BaseFunction): ConvergenceResult {
     if(func instanceof RationalFunction){
        if(func.numerator instanceof Polynomial && func.denominator instanceof Polynomial){
