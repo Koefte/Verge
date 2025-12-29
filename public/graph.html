@@ -62,6 +62,7 @@
                 for(let i = 0; i < canvas.width; i++) {
                     const x = (i - canvas.width / 2) / 40; // Scale x
                     const y = getValue(_fn, x);
+                    if(y == undefined) continue;
                     const j = canvas.height / 2 - y * 40; // Scale y
                     if(i === 0) {
                         ctx.moveTo(i, j);
